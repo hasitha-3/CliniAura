@@ -1,7 +1,8 @@
 services:
   - type: web
     name: cliniaura-backend
-    env: node
+    runtime: node
+    plan: free
     rootDir: backend
     buildCommand: npm install
     startCommand: node server.js
@@ -13,7 +14,7 @@ services:
 
   - type: web
     name: cliniaura-frontend
-    env: static
+    runtime: static
     rootDir: frontend
     buildCommand: npm install && npm run build
     staticPublishPath: dist
