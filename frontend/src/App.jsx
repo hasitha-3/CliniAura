@@ -2,8 +2,12 @@ import React, { useState, useEffect, createContext, useContext } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import io from 'socket.io-client';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Activity, Heart, Wind, Droplet, AlertTriangle, LogOut, Shield, Stethoscope, User as UserIcon, ChevronDown, ChevronRight, CheckCircle, Info } from 'lucide-react';
+import { Activity, Heart, Wind, Droplet, AlertTriangle, LogOut, Shield, Stethoscope, User as UserIcon, ChevronDown, ChevronRight, CheckCircle, Info, Settings, FileText } from 'lucide-react';
 import './index.css';
+
+import CommandCentre from './pages/CommandCentre';
+import AuditDashboard from './pages/AuditDashboard';
+import AlarmSettings from './pages/AlarmSettings';
 
 const AuthContext = createContext(null);
 
@@ -83,6 +87,15 @@ const Navbar = () => {
         {user ? (
           <>
             <button className="btn" style={{ background: 'transparent', color: '#e2e8f0' }} onClick={() => navigate('/dashboard')}>Dashboard</button>
+            {(user.role === 'DOCTOR' || user.role === 'ADMIN') && (
+              <button className="btn" style={{ background: 'transparent', color: '#e2e8f0' }} onClick={() => navigate('/command-centre')}>Command Centre</button>
+            )}
+            {user.role === 'ADMIN' && (
+              <>
+                <button className="btn" style={{ background: 'transparent', color: '#e2e8f0' }} onClick={() => navigate('/admin/audit')}>Audit Ledger</button>
+                <button className="btn" style={{ background: 'transparent', color: '#e2e8f0' }} onClick={() => navigate('/settings/alarms')}>Alarms</button>
+              </>
+            )}
             <button className="btn" style={{ background: 'transparent', color: '#e2e8f0' }} onClick={() => navigate('/settings')}>Settings</button>
             <span className="glass-panel" style={{ padding: '8px 16px', borderRadius: '20px', fontSize: '0.9rem' }}>
               {user.role === 'ADMIN' && <Shield size={16} style={{ display: 'inline', marginRight: '5px' }} />}
@@ -627,6 +640,8 @@ const PatientDashboard = () => {
 const DashboardRouter = () => {
   const { user } = useContext(AuthContext);
   if (!user) return <Navigate to="/login" />;
+  
+  // Render specific dashboards based on path or role
   if (user.role === 'ADMIN') return <AdminDashboard />;
   if (user.role === 'DOCTOR') return <DoctorDashboard />;
   if (user.role === 'PATIENT') return <PatientDashboard />;
@@ -642,7 +657,10 @@ const App = () => {
           <Route path="/" element={<HomePage />} />
           <Route path="/login" element={<AuthPage />} />
           <Route path="/dashboard" element={<ProtectedRoute><DashboardRouter /></ProtectedRoute>} />
+          <Route path="/command-centre" element={<ProtectedRoute roleRequired="DOCTOR"><CommandCentre /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+          <Route path="/settings/alarms" element={<ProtectedRoute roleRequired="ADMIN"><AlarmSettings /></ProtectedRoute>} />
+          <Route path="/admin/audit" element={<ProtectedRoute roleRequired="ADMIN"><AuditDashboard /></ProtectedRoute>} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

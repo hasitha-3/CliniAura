@@ -6,12 +6,27 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const cors = require('cors');
 
+const auditMiddleware = require('./middleware/audit-middleware');
+const { AuditLogger, AuditLedger } = require('./services/audit-logger');
+const { AlarmOrchestrator, AlarmEvent } = require('./services/alarm-orchestrator');
+const { generateCompliancePDF } = require('./services/pdf-generator');
+
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, { cors: { origin: '*' } });
 
 app.use(cors());
 app.use(express.json());
+
+// Protect API routes with Audit Logging
+app.use('/api', (req, res, next) => {
+  // Simple mock user extraction for audit logs if JWT is present
+  const token = req.headers.authorization?.split(' ')[1];
+  if (token) {
+    try { req.user = jwt.verify(token, JWT_SECRET); } catch (e) {}
+  }
+  next();
+}, auditMiddleware);
 
 const JWT_SECRET = 'supersecret_cliniaura';
 
@@ -106,8 +121,60 @@ app.put('/api/users/:id', async (req, res) => {
   }
 });
 
+// --- Audit API Routes ---
+app.get('/api/audit/report', async (req, res) => {
+  try {
+    const records = await AuditLedger.find().sort({ timestamp: -1 }).limit(100);
+    res.json(records);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/audit/verify', async (req, res) => {
+  try {
+    const result = await AuditLogger.verify();
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/audit/generate-pdf', async (req, res) => {
+  try {
+    const pdfBytes = await generateCompliancePDF(req.query.wardId);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename=cliniaura_audit_report.pdf');
+    res.send(Buffer.from(pdfBytes));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Alarm API Routes ---
+app.post('/api/alarms/:alarmId/acknowledge', async (req, res) => {
+  try {
+    const success = await alarmOrchestrator.acknowledgeAlarm(req.params.alarmId, req.user?.id || 'SYSTEM');
+    if (success) res.json({ message: 'Acknowledged' });
+    else res.status(404).json({ error: 'Alarm not found' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/alarms/burden-report', async (req, res) => {
+  try {
+    const events = await AlarmEvent.find().sort({ sentAt: -1 }).limit(50);
+    res.json(events);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // --- Socket.io Real-time Vitals Simulation ---
 let simulationInterval;
+const alarmOrchestrator = new AlarmOrchestrator(io);
+
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
   
@@ -128,16 +195,14 @@ io.on('connection', (socket) => {
       
       const map = Math.round((vitals.bloodPressureSys + (2 * vitals.bloodPressureDia)) / 3);
 
-      // Simulate Alert based on synthetic vitals (MAP specifically for Hemodynamic)
-      let alert = null;
-      if (map < 65) {
-        alert = "HPI ALARM: Critical Hypotension Detected (MAP < 65). Check protocol compliance.";
-        // In a real system, the Edge AI audits the doctor's intervention here.
-      } else if (vitals.spO2 < 94) {
-        alert = "Low Oxygen Saturation";
-      }
+      io.emit('vitals_update', { vitals, calculatedMAP: map });
 
-      io.emit('vitals_update', { vitals, alert, calculatedMAP: map });
+      // Trigger Smart Alarm Orchestrator instead of raw socket events
+      if (map < 65) {
+        alarmOrchestrator.handleRawAlarm(patientId, 'HYPOTENSION', 'Critical Hypotension Detected (MAP < 65)');
+      } else if (vitals.spO2 < 94) {
+        alarmOrchestrator.handleRawAlarm(patientId, 'DESATURATION', 'Low Oxygen Saturation (SpO2 < 94%)');
+      }
     }, 2000);
   });
 
