@@ -116,6 +116,9 @@ const Navbar = () => {
 };
 
 const HomePage = () => {
+  const { user } = useContext(AuthContext);
+  const navigate = useNavigate();
+
   return (
     <div className="dashboard-container" style={{ textAlign: 'center', padding: '100px 20px' }}>
       <Activity size={80} className="text-gradient" style={{ margin: '0 auto 20px', animation: 'pulseAlert 3s infinite' }} />
@@ -124,7 +127,11 @@ const HomePage = () => {
         A modern, intelligent healthcare monitoring platform. Real-time insights, edge AI analytics, and advanced patient care.
       </p>
       <div style={{ display: 'flex', gap: '20px', justifyContent: 'center' }}>
-        <a href="/login" className="btn btn-primary" style={{ padding: '15px 30px', fontSize: '1.1rem', textDecoration: 'none' }}>Access Portal</a>
+        {user ? (
+          <button onClick={() => navigate('/dashboard')} className="btn btn-primary" style={{ padding: '15px 30px', fontSize: '1.1rem' }}>Enter Dashboard</button>
+        ) : (
+          <button onClick={() => navigate('/login')} className="btn btn-primary" style={{ padding: '15px 30px', fontSize: '1.1rem' }}>Access Portal</button>
+        )}
       </div>
     </div>
   );
@@ -233,7 +240,7 @@ const AuthPage = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (mode === 'login') {
-      if (await login(username, password)) navigate('/');
+      if (await login(username, password)) navigate('/dashboard');
     } else {
       let payload = { username, password, role };
       if (role === 'PATIENT') {
