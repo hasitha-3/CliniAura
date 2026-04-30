@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: cliniaura-backend
+    env: node
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: PORT
+        value: 5000
+      - key: MONGODB_URI
+        sync: false # User needs to enter this in the Render Dashboard
+
+  - type: web
+    name: cliniaura-frontend
+    env: static
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_BACKEND_URL
+        fromService:
+          name: cliniaura-backend
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
