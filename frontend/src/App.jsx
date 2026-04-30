@@ -8,6 +8,7 @@ import './index.css';
 import CommandCentre from './pages/CommandCentre';
 import AuditDashboard from './pages/AuditDashboard';
 import AlarmSettings from './pages/AlarmSettings';
+import HomePage from './pages/HomePage';
 
 const AuthContext = createContext(null);
 
@@ -112,28 +113,6 @@ const Navbar = () => {
         )}
       </div>
     </nav>
-  );
-};
-
-const HomePage = () => {
-  const { user } = useContext(AuthContext);
-  const navigate = useNavigate();
-
-  return (
-    <div className="dashboard-container" style={{ textAlign: 'center', padding: '100px 20px' }}>
-      <Activity size={80} className="text-gradient" style={{ margin: '0 auto 20px', animation: 'pulseAlert 3s infinite' }} />
-      <h1 style={{ fontSize: '3rem', marginBottom: '20px' }}>Welcome to Clini<span className="text-gradient">Aura</span></h1>
-      <p style={{ fontSize: '1.2rem', color: '#94a3b8', maxWidth: '600px', margin: '0 auto 40px' }}>
-        A modern, intelligent healthcare monitoring platform. Real-time insights, edge AI analytics, and advanced patient care.
-      </p>
-      <div style={{ display: 'flex', gap: '20px', justifyContent: 'center' }}>
-        {user ? (
-          <button onClick={() => navigate('/dashboard')} className="btn btn-primary" style={{ padding: '15px 30px', fontSize: '1.1rem' }}>Enter Dashboard</button>
-        ) : (
-          <button onClick={() => navigate('/login')} className="btn btn-primary" style={{ padding: '15px 30px', fontSize: '1.1rem' }}>Access Portal</button>
-        )}
-      </div>
-    </div>
   );
 };
 
@@ -661,7 +640,7 @@ const App = () => {
       <BrowserRouter>
         <Navbar />
         <Routes>
-          <Route path="/" element={<HomePage />} />
+          <Route path="/" element={<HomePage user={user} />} />
           <Route path="/login" element={<AuthPage />} />
           <Route path="/dashboard" element={<ProtectedRoute><DashboardRouter /></ProtectedRoute>} />
           <Route path="/command-centre" element={<ProtectedRoute roleRequired="DOCTOR"><CommandCentre /></ProtectedRoute>} />
