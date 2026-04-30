@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useContext } from 'react';
 import { Activity, Shield, HeartPulse, Activity as ActivityIcon, ArrowRight, Zap, Globe, Lock } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { AuthContext } from '../App';
 import '../index.css';
 
-const HomePage = ({ user }) => {
+const HomePage = () => {
+  const { user } = useContext(AuthContext);
   const navigate = useNavigate();
 
   return (

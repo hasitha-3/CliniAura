@@ -10,7 +10,7 @@ import AuditDashboard from './pages/AuditDashboard';
 import AlarmSettings from './pages/AlarmSettings';
 import HomePage from './pages/HomePage';
 
-const AuthContext = createContext(null);
+export const AuthContext = createContext(null);
 
 const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(() => {
@@ -640,7 +640,7 @@ const App = () => {
       <BrowserRouter>
         <Navbar />
         <Routes>
-          <Route path="/" element={<HomePage user={user} />} />
+          <Route path="/" element={<HomePage />} />
           <Route path="/login" element={<AuthPage />} />
           <Route path="/dashboard" element={<ProtectedRoute><DashboardRouter /></ProtectedRoute>} />
           <Route path="/command-centre" element={<ProtectedRoute roleRequired="DOCTOR"><CommandCentre /></ProtectedRoute>} />
