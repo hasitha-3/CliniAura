@@ -75,24 +75,127 @@ const Navbar = () => {
   const navigate = useNavigate();
   return (
     <nav className="navbar">
-      <div className="nav-brand">
+      <div className="nav-brand" onClick={() => navigate('/')} style={{ cursor: 'pointer' }}>
         <Activity size={28} className="text-gradient" style={{ display: 'inline', verticalAlign: 'middle', marginRight: '8px' }} />
-        Clini<span className="text-gradient">Aura</span> Cockpit
+        Clini<span className="text-gradient">Aura</span> System
       </div>
-      {user && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <span className="glass-panel" style={{ padding: '8px 16px', borderRadius: '20px', fontSize: '0.9rem' }}>
-            {user.role === 'ADMIN' && <Shield size={16} style={{ display: 'inline', marginRight: '5px' }} />}
-            {user.role === 'DOCTOR' && <Stethoscope size={16} style={{ display: 'inline', marginRight: '5px' }} />}
-            {user.role === 'PATIENT' && <UserIcon size={16} style={{ display: 'inline', marginRight: '5px' }} />}
-            {user.username} ({user.role})
-          </span>
-          <button className="btn btn-danger" onClick={() => { logout(); navigate('/login'); }}>
-            <LogOut size={16} style={{ verticalAlign: 'middle' }} />
-          </button>
-        </div>
-      )}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+        {user ? (
+          <>
+            <button className="btn" style={{ background: 'transparent', color: '#e2e8f0' }} onClick={() => navigate('/dashboard')}>Dashboard</button>
+            <button className="btn" style={{ background: 'transparent', color: '#e2e8f0' }} onClick={() => navigate('/settings')}>Settings</button>
+            <span className="glass-panel" style={{ padding: '8px 16px', borderRadius: '20px', fontSize: '0.9rem' }}>
+              {user.role === 'ADMIN' && <Shield size={16} style={{ display: 'inline', marginRight: '5px' }} />}
+              {user.role === 'DOCTOR' && <Stethoscope size={16} style={{ display: 'inline', marginRight: '5px' }} />}
+              {user.role === 'PATIENT' && <UserIcon size={16} style={{ display: 'inline', marginRight: '5px' }} />}
+              {user.username}
+            </span>
+            <button className="btn btn-danger" onClick={() => { logout(); navigate('/login'); }}>
+              <LogOut size={16} style={{ verticalAlign: 'middle' }} />
+            </button>
+          </>
+        ) : (
+          <button className="btn btn-primary" onClick={() => navigate('/login')}>Sign In</button>
+        )}
+      </div>
     </nav>
+  );
+};
+
+const HomePage = () => {
+  return (
+    <div className="dashboard-container" style={{ textAlign: 'center', padding: '100px 20px' }}>
+      <Activity size={80} className="text-gradient" style={{ margin: '0 auto 20px', animation: 'pulseAlert 3s infinite' }} />
+      <h1 style={{ fontSize: '3rem', marginBottom: '20px' }}>Welcome to Clini<span className="text-gradient">Aura</span></h1>
+      <p style={{ fontSize: '1.2rem', color: '#94a3b8', maxWidth: '600px', margin: '0 auto 40px' }}>
+        A modern, intelligent healthcare monitoring platform. Real-time insights, edge AI analytics, and advanced patient care.
+      </p>
+      <div style={{ display: 'flex', gap: '20px', justifyContent: 'center' }}>
+        <a href="/login" className="btn btn-primary" style={{ padding: '15px 30px', fontSize: '1.1rem', textDecoration: 'none' }}>Access Portal</a>
+      </div>
+    </div>
+  );
+};
+
+const SettingsPage = () => {
+  const { user } = useContext(AuthContext);
+  const [profile, setProfile] = useState({});
+  const [loading, setLoading] = useState(true);
+  
+  useEffect(() => {
+    const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+    if (user && user.role === 'PATIENT') {
+      fetch(`${API_URL}/api/patients`)
+        .then(res => res.json())
+        .then(data => {
+          const me = data.find(p => p.username === user.username);
+          if (me) setProfile(me);
+          setLoading(false);
+        })
+        .catch(() => setLoading(false));
+    } else {
+      setLoading(false);
+    }
+  }, [user]);
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+    try {
+      const res = await fetch(`${API_URL}/api/users/${profile._id || user.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(profile)
+      });
+      if (res.ok) alert('Settings saved successfully!');
+      else alert('Failed to save settings.');
+    } catch (err) {
+      alert('Error saving settings');
+    }
+  };
+
+  if (loading) return <div style={{padding: '50px', color: '#94a3b8'}}>Loading settings...</div>;
+
+  return (
+    <div className="dashboard-container">
+      <h2>Account Settings</h2>
+      <div className="glass-panel" style={{ maxWidth: '600px', marginTop: '20px' }}>
+        <form onSubmit={handleSave}>
+          <div className="input-group">
+            <label className="input-label">Username</label>
+            <input className="input-field" type="text" value={user.username} disabled />
+          </div>
+          <div className="input-group">
+            <label className="input-label">Role</label>
+            <input className="input-field" type="text" value={user.role} disabled />
+          </div>
+          
+          {user.role === 'PATIENT' && (
+            <div className="grid grid-cols-2 mt-4" style={{borderTop: '1px solid #334155', paddingTop: '20px'}}>
+              <div className="input-group">
+                <label className="input-label">Age</label>
+                <input className="input-field" type="number" value={profile.age || ''} onChange={e => setProfile({...profile, age: Number(e.target.value)})} required />
+              </div>
+              <div className="input-group">
+                <label className="input-label">Target MAP (mmHg)</label>
+                <input className="input-field" type="number" value={profile.targetMAP || ''} onChange={e => setProfile({...profile, targetMAP: Number(e.target.value)})} required />
+              </div>
+              <div className="input-group">
+                <label className="input-label">Baseline CO (L/min)</label>
+                <input className="input-field" type="number" step="0.1" value={profile.baselineCO || ''} onChange={e => setProfile({...profile, baselineCO: Number(e.target.value)})} required />
+              </div>
+              <div className="input-group">
+                <label className="input-label">Baseline SV (mL/beat)</label>
+                <input className="input-field" type="number" value={profile.baselineSV || ''} onChange={e => setProfile({...profile, baselineSV: Number(e.target.value)})} required />
+              </div>
+            </div>
+          )}
+          
+          {user.role === 'PATIENT' && <button className="btn btn-primary" type="submit" style={{ width: '100%', marginTop: '20px' }}>Save Changes</button>}
+          {user.role !== 'PATIENT' && <p style={{color: '#94a3b8', marginTop: '20px'}}>Additional settings are coming soon.</p>}
+        </form>
+      </div>
+    </div>
   );
 };
 
@@ -194,7 +297,7 @@ const AuthPage = () => {
           )}
 
           <button className="btn btn-primary" style={{ width: '100%', marginTop: '10px' }} type="submit">
-            {mode === 'login' ? 'Enter Cockpit' : 'Register Profile'}
+            {mode === 'login' ? 'Enter System' : 'Register Profile'}
           </button>
         </form>
       </div>
@@ -344,9 +447,9 @@ const DoctorDashboard = () => {
     <div className="dashboard-container" style={{ padding: '16px 32px' }}>
       <div style={{ display: 'flex', gap: '24px' }}>
         
-        {/* Cockpit Patient Roster */}
+        {/* System Patient Roster */}
         <div style={{ flex: 1, height: '80vh', overflowY: 'auto', paddingRight: '10px' }}>
-          <h3 className="mb-4">Thermodynamic Cockpit Roster</h3>
+          <h3 className="mb-4">Thermodynamic System Roster</h3>
           {patients.map(p => (
             <div key={p._id} className="patient-card" style={{ borderColor: selectedPatient?._id === p._id ? '#38bdf8' : '#334155' }}>
               <div className="patient-header" onClick={() => setExpandedPatientId(expandedPatientId === p._id ? null : p._id)}>
@@ -536,8 +639,10 @@ const App = () => {
       <BrowserRouter>
         <Navbar />
         <Routes>
+          <Route path="/" element={<HomePage />} />
           <Route path="/login" element={<AuthPage />} />
-          <Route path="/" element={<ProtectedRoute><DashboardRouter /></ProtectedRoute>} />
+          <Route path="/dashboard" element={<ProtectedRoute><DashboardRouter /></ProtectedRoute>} />
+          <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

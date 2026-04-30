@@ -89,6 +89,23 @@ app.get('/api/patients', async (req, res) => {
   res.json(patients);
 });
 
+app.put('/api/users/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updateData = req.body;
+    // Prevent changing secure fields
+    delete updateData.password;
+    delete updateData.role;
+    delete updateData.username;
+    delete updateData._id;
+
+    await User.findByIdAndUpdate(id, updateData);
+    res.json({ message: 'Settings saved successfully' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // --- Socket.io Real-time Vitals Simulation ---
 let simulationInterval;
 io.on('connection', (socket) => {
