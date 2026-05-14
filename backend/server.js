@@ -42,6 +42,10 @@ const userSchema = new mongoose.Schema({
   targetMAP: Number,
   baselineCO: Number, // Cardiac Output (L/min)
   baselineSV: Number, // Stroke Volume (mL/beat)
+  ward: { type: String, default: 'General Ward' },
+  deviceType: { type: String, default: 'Standard Monitor' },
+  batteryLevel: { type: Number, default: 100 },
+  signalQualityIndex: { type: Number, default: 100 },
   auditLogs: [{
     timestamp: { type: Date, default: Date.now },
     event: String,
@@ -63,11 +67,15 @@ const Vital = mongoose.model('Vital', vitalSchema);
 // --- Auth Routes ---
 app.post('/api/register', async (req, res) => {
   try {
-    const { username, password, role, age, activeProtocol, targetMAP, baselineCO, baselineSV, riskScore } = req.body;
+    const { username, password, role, age, activeProtocol, targetMAP, baselineCO, baselineSV, riskScore, ward, deviceType, batteryLevel, signalQualityIndex } = req.body;
     const hashedPassword = await bcrypt.hash(password, 10);
     const user = new User({ 
       username, password: hashedPassword, role, age, 
-      activeProtocol, targetMAP, baselineCO, baselineSV, riskScore 
+      activeProtocol, targetMAP, baselineCO, baselineSV, riskScore,
+      ward: ward || 'General Ward',
+      deviceType: deviceType || 'Standard Monitor',
+      batteryLevel: batteryLevel !== undefined ? batteryLevel : 100,
+      signalQualityIndex: signalQualityIndex !== undefined ? signalQualityIndex : 100
     });
     await user.save();
     res.status(201).json({ message: 'User created' });
@@ -116,6 +124,28 @@ app.put('/api/users/:id', async (req, res) => {
 
     await User.findByIdAndUpdate(id, updateData);
     res.json({ message: 'Settings saved successfully' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/users/:id/password', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { currentPassword, newPassword } = req.body;
+    const user = await User.findById(id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const isValid = await bcrypt.compare(currentPassword, user.password);
+    if (!isValid) return res.status(401).json({ error: 'Current password is incorrect' });
+
+    if (newPassword.length < 8 || !/[A-Z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
+      return res.status(400).json({ error: 'Password does not meet complexity requirements' });
+    }
+
+    user.password = await bcrypt.hash(newPassword, 10);
+    await user.save();
+    res.json({ message: 'Password updated successfully' });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

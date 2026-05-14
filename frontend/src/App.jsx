@@ -31,13 +31,11 @@ const AuthProvider = ({ children }) => {
       if (res.ok) {
         localStorage.setItem('cliniaura_user', JSON.stringify(data));
         setUser(data);
-        return true;
+        return { success: true };
       }
-      alert(data.error || 'Login failed');
-      return false;
+      return { success: false, error: data.error || 'Invalid username or password' };
     } catch (err) {
-      alert('Server connection error');
-      return false;
+      return { success: false, error: 'Cannot connect to server. Please verify backend is running.' };
     }
   };
 
@@ -48,15 +46,17 @@ const AuthProvider = ({ children }) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      if (res.ok) return true;
+      if (res.ok) return { success: true };
       const data = await res.json();
-      alert(data.error);
-      return false;
+      let msg = data.error || 'Registration failed';
+      if (msg.includes('E11000') || msg.includes('duplicate key')) {
+        msg = 'Username is already taken. Please choose another one.';
+      }
+      return { success: false, error: msg };
     } catch (err) {
-      alert('Server connection error');
-      return false;
+      return { success: false, error: 'Cannot connect to server. Please verify backend is running.' };
     }
-  }
+  };
 
   const logout = () => {
     localStorage.removeItem('cliniaura_user');
@@ -69,7 +69,13 @@ const AuthProvider = ({ children }) => {
 const ProtectedRoute = ({ children, roleRequired }) => {
   const { user } = useContext(AuthContext);
   if (!user) return <Navigate to="/login" />;
-  if (roleRequired && user.role !== roleRequired) return <Navigate to="/" />;
+  if (roleRequired) {
+    if (Array.isArray(roleRequired)) {
+      if (!roleRequired.includes(user.role)) return <Navigate to="/" />;
+    } else if (user.role !== roleRequired) {
+      return <Navigate to="/" />;
+    }
+  }
   return children;
 };
 
@@ -78,39 +84,81 @@ const ProtectedRoute = ({ children, roleRequired }) => {
 const Navbar = () => {
   const { user, logout } = useContext(AuthContext);
   const navigate = useNavigate();
+  const [scrolled, setScrolled] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setScrolled(window.scrollY > 60);
+    };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  const handleNavClick = (e, hash) => {
+    e.preventDefault();
+    setMenuOpen(false);
+    if (window.location.pathname !== '/') {
+      navigate('/');
+      setTimeout(() => {
+        const el = document.querySelector(hash);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 100);
+    } else {
+      const el = document.querySelector(hash);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
   return (
-    <nav className="navbar">
-      <div className="nav-brand" onClick={() => navigate('/')} style={{ cursor: 'pointer' }}>
-        <Activity size={28} className="text-gradient" style={{ display: 'inline', verticalAlign: 'middle', marginRight: '8px' }} />
-        Clini<span className="text-gradient">Aura</span> System
+    <nav id="navbar" className={scrolled ? 'scrolled' : ''}>
+      <a href="/" onClick={(e) => { e.preventDefault(); navigate('/'); window.scrollTo({top:0, behavior:'smooth'}); }} className="nav-logo">
+        <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M20 2C10.06 2 2 10.06 2 20s8.06 18 18 18 18-8.06 18-18S29.94 2 20 2z" stroke="#00d4aa" strokeWidth="2" fill="none"/>
+          <path d="M14 20c0-3.31 2.69-6 6-6" stroke="#00d4aa" strokeWidth="2.5" strokeLinecap="round"/>
+          <path d="M20 14c3.31 0 6 2.69 6 6" stroke="#00c2e0" strokeWidth="2.5" strokeLinecap="round"/>
+          <path d="M26 20c0 3.31-2.69 6-6 6" stroke="#00d4aa" strokeWidth="2.5" strokeLinecap="round"/>
+          <path d="M20 26c-3.31 0-6-2.69-6-6" stroke="#00c2e0" strokeWidth="2.5" strokeLinecap="round"/>
+          <circle cx="20" cy="20" r="2.5" fill="#00d4aa"/>
+        </svg>
+        CliniAura
+      </a>
+      
+      <div className="nav-links" style={{ display: window.innerWidth <= 900 && menuOpen ? 'flex' : undefined, flexDirection: window.innerWidth <= 900 ? 'column' : 'row', position: window.innerWidth <= 900 ? 'absolute' : 'static', top: '100%', left: 0, right: 0, background: window.innerWidth <= 900 ? 'var(--surface)' : 'transparent', padding: window.innerWidth <= 900 ? '1.5rem' : 0, borderBottom: window.innerWidth <= 900 ? '1px solid var(--border)' : 'none' }}>
+        <a href="#problem" onClick={(e) => handleNavClick(e, '#problem')}>Problem</a>
+        <a href="#solution" onClick={(e) => handleNavClick(e, '#solution')}>Solution</a>
+        <a href="#technology" onClick={(e) => handleNavClick(e, '#technology')}>Technology</a>
+        <a href="#team" onClick={(e) => handleNavClick(e, '#team')}>Team</a>
+        <a href="#roadmap" onClick={(e) => handleNavClick(e, '#roadmap')}>Roadmap</a>
+        <a href="#contact" onClick={(e) => handleNavClick(e, '#contact')} className="nav-cta">Get in Touch</a>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
         {user ? (
           <>
-            <button className="btn" style={{ background: 'transparent', color: '#e2e8f0' }} onClick={() => navigate('/dashboard')}>Dashboard</button>
+            <button className="btn" style={{ background: 'transparent', color: 'var(--text)', padding: '6px 12px', fontSize: '0.85rem' }} onClick={() => navigate('/dashboard')}>Dashboard</button>
             {(user.role === 'DOCTOR' || user.role === 'ADMIN') && (
-              <button className="btn" style={{ background: 'transparent', color: '#e2e8f0' }} onClick={() => navigate('/command-centre')}>Command Centre</button>
+              <button className="btn" style={{ background: 'transparent', color: 'var(--text)', padding: '6px 12px', fontSize: '0.85rem' }} onClick={() => navigate('/command-centre')}>Command</button>
             )}
             {user.role === 'ADMIN' && (
               <>
-                <button className="btn" style={{ background: 'transparent', color: '#e2e8f0' }} onClick={() => navigate('/admin/audit')}>Audit Ledger</button>
-                <button className="btn" style={{ background: 'transparent', color: '#e2e8f0' }} onClick={() => navigate('/settings/alarms')}>Alarms</button>
+                <button className="btn" style={{ background: 'transparent', color: 'var(--text)', padding: '6px 12px', fontSize: '0.85rem' }} onClick={() => navigate('/admin/audit')}>Audit</button>
+                <button className="btn" style={{ background: 'transparent', color: 'var(--text)', padding: '6px 12px', fontSize: '0.85rem' }} onClick={() => navigate('/settings/alarms')}>Alarms</button>
               </>
             )}
-            <button className="btn" style={{ background: 'transparent', color: '#e2e8f0' }} onClick={() => navigate('/settings')}>Settings</button>
-            <span className="glass-panel" style={{ padding: '8px 16px', borderRadius: '20px', fontSize: '0.9rem' }}>
-              {user.role === 'ADMIN' && <Shield size={16} style={{ display: 'inline', marginRight: '5px' }} />}
-              {user.role === 'DOCTOR' && <Stethoscope size={16} style={{ display: 'inline', marginRight: '5px' }} />}
-              {user.role === 'PATIENT' && <UserIcon size={16} style={{ display: 'inline', marginRight: '5px' }} />}
+            <span style={{ background: 'rgba(0, 212, 170, 0.08)', border: '1px solid var(--border)', padding: '4px 10px', borderRadius: '100px', fontSize: '0.75rem', color: 'var(--teal)' }}>
               {user.username}
             </span>
-            <button className="btn btn-danger" onClick={() => { logout(); navigate('/login'); }}>
-              <LogOut size={16} style={{ verticalAlign: 'middle' }} />
+            <button className="btn btn-danger" style={{ padding: '4px 8px', borderRadius: '8px' }} onClick={() => { logout(); navigate('/login'); }} title="Sign Out">
+              <LogOut size={14} style={{ verticalAlign: 'middle' }} />
             </button>
           </>
         ) : (
-          <button className="btn btn-primary" onClick={() => navigate('/login')}>Sign In</button>
+          <button className="btn btn-primary" style={{ padding: '0.5rem 1.2rem', fontSize: '0.85rem' }} onClick={() => navigate('/login')}>Sign In</button>
         )}
+        <button className="menu-toggle" onClick={() => setMenuOpen(!menuOpen)} aria-label="Menu">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </button>
       </div>
     </nav>
   );
@@ -121,13 +169,24 @@ const SettingsPage = () => {
   const [profile, setProfile] = useState({});
   const [loading, setLoading] = useState(true);
   
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [showCurrentPwd, setShowCurrentPwd] = useState(false);
+  const [showNewPwd, setShowNewPwd] = useState(false);
+  const [pwdError, setPwdError] = useState('');
+  const [pwdSuccess, setPwdSuccess] = useState('');
+  const [showPwdSection, setShowPwdSection] = useState(false);
+
   useEffect(() => {
     const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
     if (user && user.role === 'PATIENT') {
-      fetch(`${API_URL}/api/patients`)
+      const token = JSON.parse(localStorage.getItem('cliniaura_user'))?.token;
+      fetch(`${API_URL}/api/patients`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
         .then(res => res.json())
         .then(data => {
-          const me = data.find(p => p.username === user.username);
+          const me = Array.isArray(data) ? data.find(p => p.username === user.username) : null;
           if (me) setProfile(me);
           setLoading(false);
         })
@@ -140,16 +199,54 @@ const SettingsPage = () => {
   const handleSave = async (e) => {
     e.preventDefault();
     const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+    const token = JSON.parse(localStorage.getItem('cliniaura_user'))?.token;
     try {
       const res = await fetch(`${API_URL}/api/users/${profile._id || user.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify(profile)
       });
       if (res.ok) alert('Settings saved successfully!');
       else alert('Failed to save settings.');
     } catch (err) {
       alert('Error saving settings');
+    }
+  };
+
+  const handlePasswordSave = async (e) => {
+    e.preventDefault();
+    setPwdError('');
+    setPwdSuccess('');
+
+    if (newPassword.length < 8 || !/[A-Z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
+      setPwdError('Password must be min 8 characters, containing at least 1 uppercase letter and 1 number.');
+      return;
+    }
+
+    const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+    const token = JSON.parse(localStorage.getItem('cliniaura_user'))?.token;
+    try {
+      const res = await fetch(`${API_URL}/api/users/${profile._id || user.id}/password`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ currentPassword, newPassword })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setPwdSuccess('Password updated successfully!');
+        setCurrentPassword('');
+        setNewPassword('');
+      } else {
+        setPwdError(data.error || 'Failed to update password.');
+      }
+    } catch (err) {
+      setPwdError('Error connecting to server.');
     }
   };
 
@@ -162,14 +259,14 @@ const SettingsPage = () => {
         <form onSubmit={handleSave}>
           <div className="input-group">
             <label className="input-label">Username</label>
-            <input className="input-field" type="text" value={user.username} disabled />
+            <input className="input-field" type="text" value={user?.username || ''} disabled />
           </div>
           <div className="input-group">
             <label className="input-label">Role</label>
-            <input className="input-field" type="text" value={user.role} disabled />
+            <input className="input-field" type="text" value={user?.role || ''} disabled />
           </div>
           
-          {user.role === 'PATIENT' && (
+          {user?.role === 'PATIENT' && (
             <div className="grid grid-cols-2 mt-4" style={{borderTop: '1px solid #334155', paddingTop: '20px'}}>
               <div className="input-group">
                 <label className="input-label">Age</label>
@@ -190,9 +287,93 @@ const SettingsPage = () => {
             </div>
           )}
           
-          {user.role === 'PATIENT' && <button className="btn btn-primary" type="submit" style={{ width: '100%', marginTop: '20px' }}>Save Changes</button>}
-          {user.role !== 'PATIENT' && <p style={{color: '#94a3b8', marginTop: '20px'}}>Additional settings are coming soon.</p>}
+          {user?.role === 'PATIENT' && <button className="btn btn-primary" type="submit" style={{ width: '100%', marginTop: '20px' }}>Save Changes</button>}
         </form>
+
+        <div style={{ borderTop: '1px solid var(--border)', marginTop: '30px', paddingTop: '20px' }}>
+          <button 
+            type="button" 
+            onClick={() => setShowPwdSection(!showPwdSection)}
+            style={{ 
+              background: 'none', 
+              border: 'none', 
+              color: 'var(--teal)', 
+              fontWeight: '600', 
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              fontSize: '0.95rem'
+            }}
+          >
+            <Settings size={16} /> {showPwdSection ? 'Hide Password Settings' : 'Change Account Password'}
+          </button>
+
+          {showPwdSection && (
+            <form onSubmit={handlePasswordSave} style={{ marginTop: '20px', animation: 'fade-up 0.4s ease' }}>
+              {pwdError && (
+                <div style={{ padding: '12px', background: 'rgba(255,77,106,0.1)', border: '1px solid #ff4d6a', color: '#ff4d6a', borderRadius: '8px', marginBottom: '16px', fontSize: '0.85rem' }}>
+                  {pwdError}
+                </div>
+              )}
+              {pwdSuccess && (
+                <div style={{ padding: '12px', background: 'rgba(0,212,170,0.1)', border: '1px solid var(--teal)', color: 'var(--teal)', borderRadius: '8px', marginBottom: '16px', fontSize: '0.85rem' }}>
+                  {pwdSuccess}
+                </div>
+              )}
+
+              <div className="input-group">
+                <label className="input-label">Current Password</label>
+                <div style={{ position: 'relative' }}>
+                  <input 
+                    className="input-field" 
+                    type={showCurrentPwd ? 'text' : 'password'} 
+                    value={currentPassword} 
+                    onChange={e => setCurrentPassword(e.target.value)} 
+                    style={{ paddingRight: '50px' }}
+                    required 
+                  />
+                  <button 
+                    type="button" 
+                    onClick={() => setShowCurrentPwd(!showCurrentPwd)}
+                    style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}
+                  >
+                    {showCurrentPwd ? 'HIDE' : 'SHOW'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="input-group">
+                <label className="input-label">New Password</label>
+                <div style={{ position: 'relative' }}>
+                  <input 
+                    className="input-field" 
+                    type={showNewPwd ? 'text' : 'password'} 
+                    value={newPassword} 
+                    onChange={e => setNewPassword(e.target.value)} 
+                    style={{ paddingRight: '50px' }}
+                    required 
+                  />
+                  <button 
+                    type="button" 
+                    onClick={() => setShowNewPwd(!showNewPwd)}
+                    style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}
+                  >
+                    {showNewPwd ? 'HIDE' : 'SHOW'}
+                  </button>
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                  Min 8 chars, 1 uppercase, 1 number required.
+                </div>
+              </div>
+
+              <button className="btn btn-secondary" type="submit" style={{ width: '100%', marginTop: '10px' }}>
+                Update Password
+              </button>
+            </form>
+          )}
+        </div>
+
       </div>
     </div>
   );
@@ -201,11 +382,11 @@ const SettingsPage = () => {
 const AuthPage = () => {
   const { login, register, user } = useContext(AuthContext);
   const navigate = useNavigate();
-  const [mode, setMode] = useState('login'); // 'login' or 'register'
+  const [mode, setMode] = useState('login');
   
-  // Form State
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [role, setRole] = useState('DOCTOR');
   const [age, setAge] = useState(50);
   const [activeProtocol, setActiveProtocol] = useState('Sepsis Resuscitation Bundles');
@@ -214,20 +395,40 @@ const AuthPage = () => {
   const [baselineSV, setBaselineSV] = useState(60);
   const [riskScore, setRiskScore] = useState('Moderate');
 
+  const [authError, setAuthError] = useState('');
+  const [authSuccess, setAuthSuccess] = useState('');
+
   if (user) return <Navigate to="/" />;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setAuthError('');
+    setAuthSuccess('');
+
     if (mode === 'login') {
-      if (await login(username, password)) navigate('/dashboard');
+      const res = await login(username, password);
+      if (res.success) {
+        navigate('/dashboard');
+      } else {
+        setAuthError(res.error);
+      }
     } else {
+      if (password.length < 8 || !/[A-Z]/.test(password) || !/[0-9]/.test(password)) {
+        setAuthError('Password must be min 8 characters, containing at least 1 uppercase letter and 1 number.');
+        return;
+      }
+
       let payload = { username, password, role };
       if (role === 'PATIENT') {
         payload = { ...payload, age, activeProtocol, targetMAP, baselineCO, baselineSV, riskScore };
       }
-      if (await register(payload)) {
-        alert('Registration successful! Please sign in.');
+      const res = await register(payload);
+      if (res.success) {
+        setAuthSuccess('Account created successfully! You can now sign in.');
+        setPassword('');
         setMode('login');
+      } else {
+        setAuthError(res.error);
       }
     }
   };
@@ -236,18 +437,51 @@ const AuthPage = () => {
     <div className="auth-container">
       <div className="glass-panel auth-form" style={{ maxWidth: mode === 'register' && role === 'PATIENT' ? '600px' : '400px' }}>
         <div className="auth-tabs">
-          <div className={`auth-tab ${mode === 'login' ? 'active' : ''}`} onClick={() => setMode('login')}>Sign In</div>
-          <div className={`auth-tab ${mode === 'register' ? 'active' : ''}`} onClick={() => setMode('register')}>Sign Up</div>
+          <div className={`auth-tab ${mode === 'login' ? 'active' : ''}`} onClick={() => { setMode('login'); setAuthError(''); setAuthSuccess(''); }}>Sign In</div>
+          <div className={`auth-tab ${mode === 'register' ? 'active' : ''}`} onClick={() => { setMode('register'); setAuthError(''); setAuthSuccess(''); }}>Sign Up</div>
         </div>
+
+        {authError && (
+          <div style={{ padding: '12px', background: 'rgba(255,77,106,0.1)', border: '1px solid #ff4d6a', color: '#ff4d6a', borderRadius: '8px', marginBottom: '16px', fontSize: '0.85rem', animation: 'fade-up 0.3s ease' }}>
+            {authError}
+          </div>
+        )}
+        {authSuccess && (
+          <div style={{ padding: '12px', background: 'rgba(0,212,170,0.1)', border: '1px solid var(--teal)', color: 'var(--teal)', borderRadius: '8px', marginBottom: '16px', fontSize: '0.85rem', animation: 'fade-up 0.3s ease' }}>
+            {authSuccess}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit}>
           <div className="input-group">
             <label className="input-label">Username</label>
             <input className="input-field" type="text" value={username} onChange={e => setUsername(e.target.value)} required />
           </div>
+
           <div className="input-group">
             <label className="input-label">Password</label>
-            <input className="input-field" type="password" value={password} onChange={e => setPassword(e.target.value)} required />
+            <div style={{ position: 'relative' }}>
+              <input 
+                className="input-field" 
+                type={showPassword ? 'text' : 'password'} 
+                value={password} 
+                onChange={e => setPassword(e.target.value)} 
+                style={{ paddingRight: '50px' }}
+                required 
+              />
+              <button 
+                type="button" 
+                onClick={() => setShowPassword(!showPassword)}
+                style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}
+              >
+                {showPassword ? 'HIDE' : 'SHOW'}
+              </button>
+            </div>
+            {mode === 'register' && (
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                Min 8 chars, 1 uppercase, 1 number required.
+              </div>
+            )}
           </div>
           
           {mode === 'register' && (
@@ -307,79 +541,139 @@ const AuthPage = () => {
 const AdminDashboard = () => {
   const [users, setUsers] = useState([]);
   const [expandedRow, setExpandedRow] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedRole, setSelectedRole] = useState('ALL');
 
   useEffect(() => {
-    fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000'}/api/users`)
+    const token = JSON.parse(localStorage.getItem('cliniaura_user'))?.token;
+    fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000'}/api/users`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
       .then(res => res.json())
       .then(data => setUsers(data || []))
       .catch(console.error);
   }, []);
 
+  const filteredUsers = users.filter(u => {
+    const matchesSearch = !searchTerm || u.username.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesRole = selectedRole === 'ALL' || u.role === selectedRole;
+    return matchesSearch && matchesRole;
+  });
+
   return (
-    <div className="dashboard-container">
-      <h2 className="mb-4">Global Treatment Compliance Audits</h2>
-      <p style={{ color: '#94a3b8', marginBottom: '20px' }}>
-        This module utilizes Edge AI log tracking to summarize treatment efficiency across the thermodynamic care units.
-      </p>
+    <div className="dashboard-container" style={{ padding: '16px 32px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '16px' }}>
+        <div>
+          <h2 style={{ margin: 0 }}>Global Treatment Compliance Audits</h2>
+          <p style={{ color: '#94a3b8', margin: '4px 0 0 0', fontSize: '0.9rem' }}>
+            Edge AI log tracking to summarize treatment efficiency across care units.
+          </p>
+        </div>
+
+        {/* Filters */}
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <select
+            value={selectedRole}
+            onChange={e => setSelectedRole(e.target.value)}
+            style={{
+              background: 'var(--bg2)',
+              color: 'var(--text)',
+              border: '1px solid var(--border)',
+              padding: '6px 12px',
+              borderRadius: '8px',
+              fontSize: '0.85rem',
+              outline: 'none',
+              cursor: 'pointer'
+            }}
+          >
+            <option value="ALL">All System Roles</option>
+            <option value="PATIENT">Patients Only</option>
+            <option value="DOCTOR">Doctors</option>
+            <option value="ADMIN">Admins</option>
+          </select>
+
+          <input
+            type="text"
+            placeholder="Search username ID..."
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            style={{
+              padding: '6px 12px',
+              borderRadius: '100px',
+              border: '1px solid var(--border)',
+              background: 'var(--bg2)',
+              color: 'var(--text)',
+              fontSize: '0.85rem',
+              outline: 'none',
+              width: '200px'
+            }}
+          />
+        </div>
+      </div>
       
       <div className="glass-panel" style={{ padding: 0, overflow: 'hidden' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
           <thead>
             <tr style={{ background: 'rgba(15, 23, 42, 0.8)', borderBottom: '1px solid #334155' }}>
-              <th style={{ padding: '16px' }}>User ID</th>
-              <th style={{ padding: '16px' }}>Role</th>
-              <th style={{ padding: '16px' }}>Therapeutic Status</th>
-              <th style={{ padding: '16px' }}>Action</th>
+              <th style={{ padding: '16px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>User ID / Node Name</th>
+              <th style={{ padding: '16px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>Assigned Clearance</th>
+              <th style={{ padding: '16px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>Therapeutic Status</th>
+              <th style={{ padding: '16px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>Compliance Ledger</th>
             </tr>
           </thead>
           <tbody>
-            {users.map(u => (
+            {filteredUsers.map(u => (
               <React.Fragment key={u._id}>
-                <tr style={{ borderBottom: '1px solid #334155' }}>
-                  <td style={{ padding: '16px' }}><strong>{u.username}</strong></td>
+                <tr style={{ borderBottom: '1px solid #334155', transition: 'background 0.2s' }} onMouseOver={e => e.currentTarget.style.background = 'rgba(0,212,170,0.02)'} onMouseOut={e => e.currentTarget.style.background = 'transparent'}>
+                  <td style={{ padding: '16px' }}>
+                    <strong>{u.username}</strong>
+                    {u.role === 'PATIENT' && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Ward: {u.ward || 'General Ward'}</div>}
+                  </td>
                   <td style={{ padding: '16px' }}><span className="text-gradient font-bold">{u.role}</span></td>
                   <td style={{ padding: '16px' }}>
                     {u.role === 'PATIENT' ? (
                       <span className={`badge-risk risk-${u.riskScore}`}>{u.riskScore} Risk</span>
-                    ) : 'N/A'}
+                    ) : <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>System Sentinel</span>}
                   </td>
                   <td style={{ padding: '16px' }}>
                     {u.role === 'PATIENT' && (
-                      <button className="btn" style={{ background: 'transparent', border: '1px solid #334155', color: '#e2e8f0', padding: '6px 12px' }}
+                      <button className="btn" style={{ background: expandedRow === u._id ? 'var(--teal)' : 'transparent', border: '1px solid var(--border)', color: expandedRow === u._id ? 'var(--bg)' : 'var(--teal)', padding: '4px 12px', fontSize: '0.8rem' }}
                         onClick={() => setExpandedRow(expandedRow === u._id ? null : u._id)}>
-                        {expandedRow === u._id ? 'Close Audit' : 'Target Audits'}
+                        {expandedRow === u._id ? 'Hide Logs' : 'View AI Audits'}
                       </button>
                     )}
                   </td>
                 </tr>
                 {expandedRow === u._id && u.role === 'PATIENT' && (
-                  <tr style={{ background: 'rgba(0,0,0,0.2)' }}>
-                    <td colSpan="4" style={{ padding: '20px' }}>
-                      <div className="grid grid-cols-4 mb-4">
+                  <tr style={{ background: 'var(--bg2)' }}>
+                    <td colSpan="4" style={{ padding: '20px', borderBottom: '2px solid var(--teal)' }}>
+                      <div className="grid grid-cols-4 mb-4" style={{ gap: '12px' }}>
                         <div className="metric-box">
-                          <div style={{fontSize: '0.8rem', color: '#94a3b8'}}>Protocol</div>
-                          <div className="metric-val" style={{fontSize: '1rem'}}>{u.activeProtocol}</div>
+                          <div style={{fontSize: '0.75rem', color: '#94a3b8'}}>Protocol</div>
+                          <div className="metric-val" style={{fontSize: '0.95rem'}}>{u.activeProtocol || 'None'}</div>
                         </div>
                         <div className="metric-box">
-                          <div style={{fontSize: '0.8rem', color: '#94a3b8'}}>Target MAP</div>
-                          <div className="metric-val">{u.targetMAP} mmHg</div>
+                          <div style={{fontSize: '0.75rem', color: '#94a3b8'}}>Target MAP</div>
+                          <div className="metric-val" style={{fontSize: '0.95rem'}}>{u.targetMAP} mmHg</div>
                         </div>
                         <div className="metric-box">
-                          <div style={{fontSize: '0.8rem', color: '#94a3b8'}}>Base Cardiac Output</div>
-                          <div className="metric-val">{u.baselineCO} L/min</div>
+                          <div style={{fontSize: '0.75rem', color: '#94a3b8'}}>Base Cardiac Output</div>
+                          <div className="metric-val" style={{fontSize: '0.95rem'}}>{u.baselineCO} L/min</div>
                         </div>
                         <div className="metric-box">
-                          <div style={{fontSize: '0.8rem', color: '#94a3b8'}}>Base Stroke Volume</div>
-                          <div className="metric-val">{u.baselineSV} mL</div>
+                          <div style={{fontSize: '0.75rem', color: '#94a3b8'}}>Base Stroke Volume</div>
+                          <div className="metric-val" style={{fontSize: '0.95rem'}}>{u.baselineSV} mL</div>
                         </div>
                       </div>
                       
-                      <h4 style={{marginBottom: '10px'}}><CheckCircle size={16} style={{display: 'inline', marginRight: '5px', color: '#22c55e'}}/> AI Treatment Audit History</h4>
-                      {(!u.auditLogs || u.auditLogs.length === 0) ? <p style={{color: '#94a3b8', fontSize: '0.9rem'}}>No audits flagged.</p> : (
-                        <ul className="audit-list">
+                      <h4 style={{marginBottom: '10px', fontSize: '0.9rem', color: 'var(--teal)'}}>
+                        AI Treatment Audit Ledger Events
+                      </h4>
+                      {(!u.auditLogs || u.auditLogs.length === 0) ? <p style={{color: '#94a3b8', fontSize: '0.85rem'}}>No offline audits pending.</p> : (
+                        <ul className="audit-list" style={{ marginTop: 0 }}>
                           {u.auditLogs.map((log, i) => (
                             <li key={i} className={`audit-item audit-${log.status.toLowerCase()}`}>
-                              <span style={{color: '#94a3b8', marginRight: '10px'}}>{new Date(log.timestamp).toLocaleTimeString()}</span>
+                              <span style={{color: '#94a3b8', marginRight: '10px', fontSize: '0.75rem'}}>{new Date(log.timestamp).toLocaleTimeString()}</span>
                               <strong>[{log.status}]</strong> {log.event}
                             </li>
                           ))}
@@ -390,6 +684,11 @@ const AdminDashboard = () => {
                 )}
               </React.Fragment>
             ))}
+            {filteredUsers.length === 0 && (
+              <tr>
+                <td colSpan="4" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>No node stream matches the criteria.</td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -404,10 +703,14 @@ const DoctorDashboard = () => {
   const [socket, setSocket] = useState(null);
   const [vitalsData, setVitalsData] = useState([]);
   const [alert, setAlert] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
     const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
-    fetch(`${API_URL}/api/patients`)
+    const token = JSON.parse(localStorage.getItem('cliniaura_user'))?.token;
+    fetch(`${API_URL}/api/patients`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
       .then(res => res.json())
       .then(data => setPatients(data || []));
 
@@ -442,132 +745,175 @@ const DoctorDashboard = () => {
     HeartRate: v.heartRate
   }));
 
+  const filteredPatients = patients.filter(p => {
+    if (!searchTerm) return true;
+    return p.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
+           (p.activeProtocol && p.activeProtocol.toLowerCase().includes(searchTerm.toLowerCase()));
+  });
+
   return (
     <div className="dashboard-container" style={{ padding: '16px 32px' }}>
-      <div style={{ display: 'flex', gap: '24px' }}>
+      <div style={{ display: 'flex', gap: '24px', alignItems: 'stretch' }}>
         
         {/* System Patient Roster */}
-        <div style={{ flex: 1, height: '80vh', overflowY: 'auto', paddingRight: '10px' }}>
-          <h3 className="mb-4">Thermodynamic System Roster</h3>
-          {patients.map(p => (
-            <div key={p._id} className="patient-card" style={{ borderColor: selectedPatient?._id === p._id ? '#38bdf8' : '#334155' }}>
-              <div className="patient-header" onClick={() => setExpandedPatientId(expandedPatientId === p._id ? null : p._id)}>
-                <div>
-                  <div style={{ fontWeight: 'bold', fontSize: '1.1rem' }}>{p.username} <span style={{fontSize: '0.8rem', color: '#94a3b8', fontWeight: 'normal'}}>{p.age}yrs</span></div>
-                  <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '4px' }}>{p.activeProtocol}</div>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <span className={`badge-risk risk-${p.riskScore}`}>{p.riskScore}</span>
-                  {expandedPatientId === p._id ? <ChevronDown size={20} color="#94a3b8"/> : <ChevronRight size={20} color="#94a3b8"/>}
-                </div>
-              </div>
-              
-              {expandedPatientId === p._id && (
-                <div className="patient-details-expanded">
-                  <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
-                    <div className="metric-box" style={{flex: 1}}>
-                      <div style={{fontSize: '0.7rem', color: '#94a3b8'}} title="Mean Arterial Pressure">Target MAP <Info size={10}/></div>
-                      <div className="metric-val" style={{fontSize: '1rem'}}>{p.targetMAP} <span style={{fontSize: '0.7rem', fontWeight:'normal'}}>mmHg</span></div>
-                    </div>
-                    <div className="metric-box" style={{flex: 1}}>
-                      <div style={{fontSize: '0.7rem', color: '#94a3b8'}} title="Cardiac Output">Base CO <Info size={10}/></div>
-                      <div className="metric-val" style={{fontSize: '1rem'}}>{p.baselineCO} <span style={{fontSize: '0.7rem', fontWeight:'normal'}}>L/m</span></div>
-                    </div>
-                    <div className="metric-box" style={{flex: 1}}>
-                      <div style={{fontSize: '0.7rem', color: '#94a3b8'}} title="Stroke Volume">Base SV <Info size={10}/></div>
-                      <div className="metric-val" style={{fontSize: '1rem'}}>{p.baselineSV} <span style={{fontSize: '0.7rem', fontWeight:'normal'}}>mL</span></div>
-                    </div>
-                  </div>
-                  
-                  <div style={{fontSize: '0.85rem', color: '#94a3b8', marginBottom: '10px'}}>Recent AI Treatment Audits:</div>
-                  <ul className="audit-list" style={{ marginTop: 0 }}>
-                    {p.auditLogs?.slice(0, 2).map((log, i) => (
-                      <li key={i} className={`audit-item audit-${log.status.toLowerCase()}`}>
-                        <strong>[{log.status}]</strong> {log.event}
-                      </li>
-                    )) || <li>No audits logged.</li>}
-                  </ul>
+        <div style={{ flex: 1, height: '82vh', overflowY: 'auto', paddingRight: '10px', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+            <h3 style={{ margin: 0 }}>Thermodynamic Roster</h3>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{filteredPatients.length} Connected</span>
+          </div>
 
-                  <button className="btn btn-primary" style={{ width: '100%', marginTop: '15px', padding: '8px' }} onClick={(e) => { e.stopPropagation(); setSelectedPatient(p); }}>
-                    Monitor Edge Stream
-                  </button>
+          <input
+            type="text"
+            placeholder="Search patient or protocol..."
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '8px 14px',
+              borderRadius: '100px',
+              border: '1px solid var(--border)',
+              background: 'var(--bg2)',
+              color: 'var(--text)',
+              fontSize: '0.85rem',
+              outline: 'none',
+              marginBottom: '16px'
+            }}
+          />
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 1, overflowY: 'auto', paddingRight: '4px' }}>
+            {filteredPatients.map(p => (
+              <div key={p._id} className="patient-card" style={{ borderColor: selectedPatient?._id === p._id ? '#38bdf8' : '#334155', margin: 0 }}>
+                <div className="patient-header" onClick={() => setExpandedPatientId(expandedPatientId === p._id ? null : p._id)}>
+                  <div>
+                    <div style={{ fontWeight: 'bold', fontSize: '1.05rem' }}>{p.username} <span style={{fontSize: '0.75rem', color: '#94a3b8', fontWeight: 'normal'}}>{p.age}yrs</span></div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--teal-dim)', marginTop: '2px' }}>{p.activeProtocol || 'No Protocol Assigned'}</div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span className={`badge-risk risk-${p.riskScore}`}>{p.riskScore}</span>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{expandedPatientId === p._id ? '▲' : '▼'}</span>
+                  </div>
                 </div>
-              )}
-            </div>
-          ))}
+                
+                {expandedPatientId === p._id && (
+                  <div className="patient-details-expanded" style={{ animation: 'fade-up 0.2s ease' }}>
+                    <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+                      <div className="metric-box" style={{flex: 1, padding: '6px'}}>
+                        <div style={{fontSize: '0.65rem', color: '#94a3b8'}} title="Mean Arterial Pressure">Target MAP</div>
+                        <div className="metric-val" style={{fontSize: '0.9rem'}}>{p.targetMAP} <span style={{fontSize: '0.65rem', fontWeight:'normal'}}>mmHg</span></div>
+                      </div>
+                      <div className="metric-box" style={{flex: 1, padding: '6px'}}>
+                        <div style={{fontSize: '0.65rem', color: '#94a3b8'}} title="Cardiac Output">Base CO</div>
+                        <div className="metric-val" style={{fontSize: '0.9rem'}}>{p.baselineCO} <span style={{fontSize: '0.65rem', fontWeight:'normal'}}>L/m</span></div>
+                      </div>
+                      <div className="metric-box" style={{flex: 1, padding: '6px'}}>
+                        <div style={{fontSize: '0.65rem', color: '#94a3b8'}} title="Stroke Volume">Base SV</div>
+                        <div className="metric-val" style={{fontSize: '0.9rem'}}>{p.baselineSV} <span style={{fontSize: '0.65rem', fontWeight:'normal'}}>mL</span></div>
+                      </div>
+                    </div>
+                    
+                    <div style={{fontSize: '0.75rem', color: '#94a3b8', marginBottom: '6px'}}>Recent AI Treatment Audits:</div>
+                    <ul className="audit-list" style={{ marginTop: 0, fontSize: '0.75rem' }}>
+                      {p.auditLogs?.slice(0, 2).map((log, i) => (
+                        <li key={i} className={`audit-item audit-${log.status.toLowerCase()}`} style={{ padding: '4px 8px', marginBottom: '4px' }}>
+                          <strong>[{log.status}]</strong> {log.event}
+                        </li>
+                      )) || <li style={{color:'var(--text-muted)'}}>No audits logged.</li>}
+                    </ul>
+
+                    <button className="btn btn-primary" style={{ width: '100%', marginTop: '10px', padding: '6px', fontSize: '0.8rem' }} onClick={(e) => { e.stopPropagation(); setSelectedPatient(p); }}>
+                      Monitor Live Edge Stream
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+            {filteredPatients.length === 0 && (
+              <div style={{ textAlign: 'center', padding: '40px 10px', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                No active patients match your search criteria.
+              </div>
+            )}
+          </div>
         </div>
         
         {/* Active Stream View */}
-        <div style={{ flex: 2.5 }}>
+        <div style={{ flex: 2.5, display: 'flex', flexDirection: 'column' }}>
           {!selectedPatient ? (
-            <div className="glass-panel" style={{ textAlign: 'center', padding: '100px 50px', color: '#94a3b8' }}>
-              <Activity size={64} style={{ opacity: 0.2, marginBottom: '20px' }} />
+            <div className="glass-panel" style={{ textAlign: 'center', padding: '100px 50px', color: '#94a3b8', margin: 'auto 0' }}>
+              <Activity size={64} style={{ opacity: 0.2, marginBottom: '20px', margin: '0 auto' }} />
               <h2>No Stream Connected</h2>
-              <p>Expand a patient card in the roster and initialize the Edge Stream.</p>
+              <p style={{ fontSize: '0.9rem' }}>Expand a patient card in the roster and initialize the Edge Stream.</p>
             </div>
           ) : (
             <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
                 <div>
-                  <h2 style={{ display: 'inline', marginRight: '15px' }}>{selectedPatient.username} - Hemodynamic Trajectory</h2>
+                  <h2 style={{ display: 'inline', marginRight: '15px', fontSize: '1.4rem' }}>{selectedPatient.username} - Hemodynamic Trajectory</h2>
                   <span className={`badge-risk risk-${selectedPatient.riskScore}`} style={{ verticalAlign: 'middle' }}>{selectedPatient.riskScore} HPI Risk</span>
                 </div>
-                <div><span className="live-pulse"></span>Live Edge Stream</div>
+                <div style={{ fontSize: '0.85rem', color: 'var(--teal)', fontWeight: 'bold' }}>
+                  <span className="live-pulse"></span>Live Stream Operational
+                </div>
               </div>
               
               {alert && (
                 <div className="alert-banner">
-                  <AlertTriangle size={24} />
+                  <AlertTriangle size={24} style={{ flexShrink: 0 }} />
                   <div>
                     <strong>Thermodynamic Instability Detected</strong>
-                    <p style={{ margin: 0, fontSize: '0.9rem' }}>{alert}</p>
+                    <p style={{ margin: 0, fontSize: '0.85rem' }}>{alert}</p>
                   </div>
                 </div>
               )}
 
               {latestVitals ? (
                 <>
-                  <div className="grid grid-cols-4 mb-4">
-                    <div className="glass-panel vital-card" style={{ padding: '15px' }}>
-                      <div className="vital-value" style={{ color: latestVitals.heartRate > 100 ? '#ef4444' : 'white', margin: '5px 0' }}>{latestVitals.heartRate}</div>
-                      <div style={{ color: '#94a3b8', fontSize: '0.8rem', textAlign: 'center' }}>Heart Rate (bpm) <Info size={12} title="Beats per minute. Critical > 100"/></div>
+                  <div className="grid grid-cols-4 mb-4" style={{ gap: '12px' }}>
+                    <div className="glass-panel vital-card" style={{ padding: '12px' }}>
+                      <div className="vital-value" style={{ color: latestVitals.heartRate > 100 ? '#ff4d6a' : 'white', margin: '2px 0', fontSize: '2rem' }}>{latestVitals.heartRate}</div>
+                      <div style={{ color: '#94a3b8', fontSize: '0.75rem', textAlign: 'center' }}>Heart Rate (bpm)</div>
                     </div>
                     
-                    <div className="glass-panel vital-card" style={{ padding: '15px' }}>
-                      <div className="vital-value" style={{ margin: '5px 0' }}>{latestVitals.bloodPressureSys}/{latestVitals.bloodPressureDia}</div>
-                      <div style={{ color: '#94a3b8', fontSize: '0.8rem', textAlign: 'center' }}>NIBP (mmHg) <Info size={12} title="Systolic / Diastolic Pressure"/></div>
+                    <div className="glass-panel vital-card" style={{ padding: '12px' }}>
+                      <div className="vital-value" style={{ margin: '2px 0', fontSize: '2rem' }}>{latestVitals.bloodPressureSys}/{latestVitals.bloodPressureDia}</div>
+                      <div style={{ color: '#94a3b8', fontSize: '0.75rem', textAlign: 'center' }}>NIBP (mmHg)</div>
                     </div>
                     
-                    <div className="glass-panel vital-card" style={{ padding: '15px', borderColor: mapData[mapData.length-1]?.MAP < selectedPatient.targetMAP ? '#ef4444' : '#334155' }}>
-                      <div className="vital-value" style={{ color: mapData[mapData.length-1]?.MAP < selectedPatient.targetMAP ? '#ef4444' : '#38bdf8', margin: '5px 0' }}>
+                    <div className="glass-panel vital-card" style={{ padding: '12px', borderColor: mapData[mapData.length-1]?.MAP < selectedPatient.targetMAP ? '#ff4d6a' : 'var(--border)' }}>
+                      <div className="vital-value" style={{ color: mapData[mapData.length-1]?.MAP < selectedPatient.targetMAP ? '#ff4d6a' : '#38bdf8', margin: '2px 0', fontSize: '2rem' }}>
                         {mapData[mapData.length-1]?.MAP}
                       </div>
-                      <div style={{ color: '#94a3b8', fontSize: '0.8rem', textAlign: 'center' }}>MAP (mmHg) <Info size={12} title={`Mean Arterial Pressure. Target: ${selectedPatient.targetMAP}`}/></div>
+                      <div style={{ color: '#94a3b8', fontSize: '0.75rem', textAlign: 'center' }}>MAP (mmHg)</div>
                     </div>
 
-                    <div className="glass-panel vital-card" style={{ padding: '15px', background: 'rgba(34, 197, 94, 0.05)', borderColor: 'rgba(34, 197, 94, 0.3)' }}>
-                      <div className="vital-value" style={{ color: '#22c55e', margin: '5px 0', fontSize: '1.2rem' }}>{selectedPatient.activeProtocol}</div>
-                      <div style={{ color: '#94a3b8', fontSize: '0.8rem', textAlign: 'center' }}>Currently Auditing <Info size={12} title="The active treatment protocol being AI-audited."/></div>
+                    <div className="glass-panel vital-card" style={{ padding: '12px', background: 'rgba(0, 212, 170, 0.05)', borderColor: 'var(--teal)' }}>
+                      <div className="vital-value truncate" style={{ color: 'var(--teal)', margin: '2px 0', fontSize: '1.1rem', maxWidth: '100%' }} title={selectedPatient.activeProtocol}>
+                        {selectedPatient.activeProtocol || 'None'}
+                      </div>
+                      <div style={{ color: '#94a3b8', fontSize: '0.75rem', textAlign: 'center' }}>Currently Auditing</div>
                     </div>
                   </div>
 
-                  <div className="glass-panel chart-container" style={{ height: '400px' }}>
-                    <h4 style={{ color: '#94a3b8', marginBottom: '10px' }}>Continuous Physiology Relationship View (MAP vs HR)</h4>
-                    <ResponsiveContainer width="100%" height="90%">
+                  <div className="glass-panel chart-container" style={{ height: '360px', padding: '16px' }}>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '12px', fontWeight: 'bold', textTransform: 'uppercase' }}>
+                      Continuous Physiology Relationship View (MAP vs HR)
+                    </div>
+                    <ResponsiveContainer width="100%" height="88%">
                       <LineChart data={mapData}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                        <XAxis dataKey="timestamp" tick={false} stroke="#94a3b8" />
-                        <YAxis yAxisId="left" stroke="#38bdf8" domain={['dataMin - 10', 'dataMax + 10']} />
-                        <YAxis yAxisId="right" orientation="right" stroke="#ef4444" domain={['dataMin - 20', 'dataMax + 20']} />
-                        <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px' }} />
-                        <Line yAxisId="left" type="monotone" dataKey="MAP" stroke="#38bdf8" name="MAP (mmHg)" strokeWidth={3} dot={false} isAnimationActive={false} />
-                        <Line yAxisId="right" type="monotone" dataKey="HeartRate" stroke="#ef4444" name="Heart Rate (bpm)" strokeWidth={3} dot={false} isAnimationActive={false} />
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                        <XAxis dataKey="timestamp" tick={false} stroke="var(--text-muted)" />
+                        <YAxis yAxisId="left" stroke="#38bdf8" domain={['dataMin - 10', 'dataMax + 10']} style={{fontSize:'0.75rem'}} />
+                        <YAxis yAxisId="right" orientation="right" stroke="#ff4d6a" domain={['dataMin - 20', 'dataMax + 20']} style={{fontSize:'0.75rem'}} />
+                        <Tooltip contentStyle={{ backgroundColor: '#050a10', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '0.75rem' }} />
+                        <Line yAxisId="left" type="monotone" dataKey="MAP" stroke="#38bdf8" name="MAP (mmHg)" strokeWidth={2} dot={false} isAnimationActive={false} />
+                        <Line yAxisId="right" type="monotone" dataKey="HeartRate" stroke="#ff4d6a" name="Heart Rate (bpm)" strokeWidth={2} dot={false} isAnimationActive={false} />
                       </LineChart>
                     </ResponsiveContainer>
                   </div>
                 </>
               ) : (
-                <div className="glass-panel" style={{ textAlign: 'center', padding: '50px' }}>Awaiting initial edge transmission...</div>
+                <div className="glass-panel" style={{ textAlign: 'center', padding: '50px', color: 'var(--text-muted)' }}>
+                  Awaiting edge synchronization broadcast packets...
+                </div>
               )}
             </div>
           )}
@@ -583,12 +929,16 @@ const PatientDashboard = () => {
 
   useEffect(() => {
     const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
-    fetch(`${API_URL}/api/patients`)
+    const token = JSON.parse(localStorage.getItem('cliniaura_user'))?.token;
+    fetch(`${API_URL}/api/patients`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
       .then(res => res.json())
       .then(data => {
-        const me = data.find(p => p.username === user.username);
+        const me = Array.isArray(data) ? data.find(p => p.username === user.username) : null;
         if (me) setProfile(me);
-      });
+      })
+      .catch(console.error);
   }, [user.username]);
 
   return (
@@ -625,13 +975,97 @@ const PatientDashboard = () => {
 
 const DashboardRouter = () => {
   const { user } = useContext(AuthContext);
+  const [personalInfo, setPersonalInfo] = useState(null);
+
+  useEffect(() => {
+    if (user) {
+      const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+      const token = JSON.parse(localStorage.getItem('cliniaura_user'))?.token;
+      
+      if (user.role === 'PATIENT') {
+        fetch(`${API_URL}/api/patients`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+          .then(res => res.json())
+          .then(data => {
+            const me = Array.isArray(data) ? data.find(p => p.username === user.username) : null;
+            if (me) setPersonalInfo(me);
+          }).catch(console.error);
+      } else {
+        fetch(`${API_URL}/api/users`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+          .then(res => res.json())
+          .then(data => {
+            const me = Array.isArray(data) ? data.find(u => u.username === user.username) : null;
+            if (me) setPersonalInfo(me);
+          }).catch(console.error);
+      }
+    }
+  }, [user]);
+
   if (!user) return <Navigate to="/login" />;
   
-  // Render specific dashboards based on path or role
-  if (user.role === 'ADMIN') return <AdminDashboard />;
-  if (user.role === 'DOCTOR') return <DoctorDashboard />;
-  if (user.role === 'PATIENT') return <PatientDashboard />;
-  return <Navigate to="/login" />;
+  return (
+    <div style={{ animation: 'fade-up 0.3s ease' }}>
+      {/* Prominent Unified Header for User Personal Context */}
+      <div className="glass-panel mb-4" style={{ 
+        background: 'linear-gradient(135deg, rgba(0, 212, 170, 0.04) 0%, rgba(0, 194, 224, 0.04) 100%)', 
+        border: '1px solid var(--border)', 
+        padding: '1.5rem', 
+        borderRadius: '16px',
+        boxShadow: 'var(--glow)'
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+          <div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--teal)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Authenticated Identity Overview</div>
+            <h2 style={{ margin: '4px 0 0 0', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+              {user.username}
+              <span style={{ fontSize: '0.8rem', padding: '2px 10px', borderRadius: '100px', background: 'var(--surface2)', color: 'var(--text)', border: '1px solid var(--border)', verticalAlign: 'middle', fontWeight: '500' }}>
+                Role Context: <strong className="text-gradient">{user.role}</strong>
+              </span>
+            </h2>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Session Context</div>
+            <div style={{ color: 'var(--teal)', fontWeight: '600', fontSize: '0.85rem' }}>Secure JWT Authorized Stream</div>
+          </div>
+        </div>
+
+        {personalInfo && user.role === 'PATIENT' && (
+          <div className="grid grid-cols-4 mt-4" style={{ borderTop: '1px solid rgba(0, 212, 170, 0.1)', paddingTop: '1.2rem', gap: '1rem' }}>
+            <div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Age Profile</div>
+              <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--text)' }}>{personalInfo.age} <span style={{fontSize: '0.75rem', fontWeight:'normal', color:'var(--text-muted)'}}>yrs</span></div>
+            </div>
+            <div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Audited Protocol</div>
+              <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--teal)' }} className="truncate" title={personalInfo.activeProtocol}>{personalInfo.activeProtocol}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Target MAP</div>
+              <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--cyan)' }}>{personalInfo.targetMAP} <span style={{fontSize: '0.75rem', fontWeight:'normal', color:'var(--text-muted)'}}>mmHg</span></div>
+            </div>
+            <div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>HPI Status</div>
+              <div><span className={`badge-risk risk-${personalInfo.riskScore}`} style={{ marginTop: '2px', display: 'inline-block' }}>{personalInfo.riskScore} Risk</span></div>
+            </div>
+          </div>
+        )}
+
+        {personalInfo && (user.role === 'DOCTOR' || user.role === 'ADMIN') && (
+          <div className="mt-3" style={{ fontSize: '0.85rem', color: 'var(--text-dim)', borderTop: '1px solid rgba(0, 212, 170, 0.1)', paddingTop: '0.8rem' }}>
+            <strong>System Registry Key:</strong> {personalInfo._id} | <strong>Authority Clearance:</strong> Complete administrative diagnostic and real-time hemodynamic command streams enabled.
+          </div>
+        )}
+      </div>
+
+      {/* Embedded Component Interfaces */}
+      {user.role === 'ADMIN' && <AdminDashboard />}
+      {user.role === 'DOCTOR' && <DoctorDashboard />}
+      {user.role === 'PATIENT' && <PatientDashboard />}
+    </div>
+  );
 };
 
 const App = () => {
@@ -643,7 +1077,7 @@ const App = () => {
           <Route path="/" element={<HomePage />} />
           <Route path="/login" element={<AuthPage />} />
           <Route path="/dashboard" element={<ProtectedRoute><DashboardRouter /></ProtectedRoute>} />
-          <Route path="/command-centre" element={<ProtectedRoute roleRequired="DOCTOR"><CommandCentre /></ProtectedRoute>} />
+          <Route path="/command-centre" element={<ProtectedRoute roleRequired={['DOCTOR', 'ADMIN']}><CommandCentre /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
           <Route path="/settings/alarms" element={<ProtectedRoute roleRequired="ADMIN"><AlarmSettings /></ProtectedRoute>} />
           <Route path="/admin/audit" element={<ProtectedRoute roleRequired="ADMIN"><AuditDashboard /></ProtectedRoute>} />
