@@ -31,7 +31,7 @@ const AuthProvider = ({ children }) => {
       if (res.ok) {
         localStorage.setItem('cliniaura_user', JSON.stringify(data));
         setUser(data);
-        return { success: true };
+        return { success: true, role: data.role };
       }
       return { success: false, error: data.error || 'Invalid username or password' };
     } catch (err) {
@@ -408,7 +408,11 @@ const AuthPage = () => {
     if (mode === 'login') {
       const res = await login(username, password);
       if (res.success) {
-        navigate('/dashboard');
+        if (res.role === 'DOCTOR' || res.role === 'ADMIN') {
+          navigate('/command-centre');
+        } else {
+          navigate('/dashboard');
+        }
       } else {
         setAuthError(res.error);
       }

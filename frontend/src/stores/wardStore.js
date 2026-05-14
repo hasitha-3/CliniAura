@@ -11,10 +11,15 @@ const useWardStore = create((set, get) => ({
     
     if (bedIndex >= 0) {
       const existing = newBeds[bedIndex];
-      const newHistory = [...(existing.history || []), vitals].slice(-120); // Keep 2 hours approx
-      newBeds[bedIndex] = { ...existing, latestVitals: vitals, history: newHistory };
+      const newHistory = vitals ? [...(existing.history || []), vitals].slice(-120) : existing.history || [];
+      const latest = vitals ? vitals : existing.latestVitals;
+      newBeds[bedIndex] = { ...existing, latestVitals: latest, history: newHistory };
     } else {
-      newBeds.push({ patientId, latestVitals: vitals, history: [vitals] });
+      newBeds.push({ 
+        patientId, 
+        latestVitals: vitals || null, 
+        history: vitals ? [vitals] : [] 
+      });
     }
 
     // 2. Add to Alert Queue if present

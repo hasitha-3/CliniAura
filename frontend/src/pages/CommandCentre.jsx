@@ -305,9 +305,9 @@ const CommandCentre = () => {
                 const isCritical = activeAlerts.some(a => a.patientId === pt._id);
                 const feedback = actionFeedback[pt._id];
 
-                // Calculate history trends
-                const sparkData = bedData?.history?.map(h => ({ 
-                  val: Math.round((h.bloodPressureSys + (2 * h.bloodPressureDia)) / 3) 
+                // Calculate history trends safely
+                const sparkData = bedData?.history?.filter(h => h != null).map(h => ({ 
+                  val: Math.round(((h.bloodPressureSys || 90) + (2 * (h.bloodPressureDia || 60))) / 3) 
                 })) || [];
 
                 // SQI Color rating
