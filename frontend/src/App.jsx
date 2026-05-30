@@ -744,7 +744,8 @@ const DoctorDashboard = () => {
         setPatients(generateDummyPatients());
       });
 
-    const newSocket = io(API_URL);
+    const role = JSON.parse(localStorage.getItem('cliniaura_user'))?.role;
+    const newSocket = io(API_URL, { auth: { token, role } });
     setSocket(newSocket);
 
     newSocket.on('vitals_update', (data) => {

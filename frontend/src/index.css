@@ -1095,7 +1095,7 @@ footer {
 .dashboard-container {
   padding: 32px;
   flex: 1;
-  margin-top: 80px; /* offset fixed navbar */
+  margin-top: 120px; /* offset fixed navbar */
 }
 
 .grid {

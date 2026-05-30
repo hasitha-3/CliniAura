@@ -62,7 +62,8 @@ const CommandCentre = () => {
         window.dummyIntervalId = intervalId;
       });
 
-    const socket = io(API_URL);
+    const role = JSON.parse(localStorage.getItem('cliniaura_user'))?.role;
+    const socket = io(API_URL, { auth: { token, role } });
     
     socket.on('vitals_update', (data) => {
       if (data?.vitals) {

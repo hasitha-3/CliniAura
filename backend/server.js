@@ -180,7 +180,7 @@ app.get('/api/alarms/burden-report', (req, res) => {
 });
 
 // --- Edge Device Data Ingestion API ---
-app.post('/api/v1/vitals/snapshot', (req, res) => {
+app.post('/api/v1/vitals/snapshot', async (req, res) => {
   try {
     const data = req.body;
     
@@ -202,6 +202,25 @@ app.post('/api/v1/vitals/snapshot', (req, res) => {
     
     // Broadcast immediately to connected dashboards
     io.emit('vitals_update', { vitals, calculatedMAP: map });
+
+    // Call MedGemma Agent
+    try {
+      const gemmaRes = await fetch('http://127.0.0.1:8000/api/v1/vitals/snapshot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': 'dev-key-123', 'Authorization': 'Bearer clinician_token' },
+        body: JSON.stringify(data)
+      });
+      if (gemmaRes.ok) {
+        const agentResponse = await gemmaRes.json();
+        // Fire alerts for HIGH and CRITICAL
+        if (agentResponse.alert_level === 'CRITICAL' || agentResponse.alert_level === 'HIGH') {
+           const alertMsg = agentResponse.reasoning_summary || `MedGemma Alert: ${agentResponse.alert_level} Risk detected`;
+           io.to('DOCTOR').to('ADMIN').emit('alarm:new', { patientId: vitals.patientId, message: alertMsg, level: agentResponse.alert_level });
+        }
+      }
+    } catch (agentErr) {
+      console.warn('MedGemma agent unreachable, skipping AI analysis.', agentErr.message);
+    }
     
     res.status(200).json({ status: 'success', message: 'Vitals ingested and broadcasted' });
   } catch (error) {
@@ -211,7 +230,11 @@ app.post('/api/v1/vitals/snapshot', (req, res) => {
 
 // --- Socket.io Real-time Vitals Management ---
 io.on('connection', (socket) => {
-  console.log('Client connected:', socket.id);
+  const role = socket.handshake.auth?.role;
+  if (role) {
+    socket.join(role);
+  }
+  console.log('Client connected:', socket.id, 'Role:', role);
   
   socket.on('start_monitoring', (patientId) => {
     console.log(`Dashboard client ${socket.id} started monitoring patient: ${patientId}`);
