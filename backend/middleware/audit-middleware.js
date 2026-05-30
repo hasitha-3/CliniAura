@@ -12,7 +12,7 @@ const auditMiddleware = async (req, res, next) => {
       
       AuditLogger.log(
         'API_ACCESS',
-        req.params.id || req.body?.patientId || null,
+        req.params?.id || req.body?.patientId || null,
         userId,
         {
           method: req.method,

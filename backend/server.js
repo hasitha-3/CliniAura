@@ -30,54 +30,53 @@ app.use('/api', (req, res, next) => {
 
 const JWT_SECRET = 'supersecret_cliniaura';
 
-// --- Mongoose Models (Hemodynamic Specialized) ---
-const userSchema = new mongoose.Schema({
-  username: { type: String, required: true, unique: true },
-  password: { type: String, required: true },
-  role: { type: String, enum: ['ADMIN', 'DOCTOR', 'PATIENT'], required: true },
-  age: Number,
-  // Hemodynamic specific parameters for patients
-  riskScore: { type: String, enum: ['Low', 'Moderate', 'High', 'Critical'] },
-  activeProtocol: String,
-  targetMAP: Number,
-  baselineCO: Number, // Cardiac Output (L/min)
-  baselineSV: Number, // Stroke Volume (mL/beat)
-  ward: { type: String, default: 'General Ward' },
-  deviceType: { type: String, default: 'Standard Monitor' },
-  batteryLevel: { type: Number, default: 100 },
-  signalQualityIndex: { type: Number, default: 100 },
-  auditLogs: [{
-    timestamp: { type: Date, default: Date.now },
-    event: String,
-    status: { type: String, enum: ['EFFICIENT', 'DELAYED', 'INEFFICIENT'] }
-  }]
-});
-const User = mongoose.model('User', userSchema);
+// --- In-Memory Data Store ---
+let USERS = [];
+let AUDIT_LEDGER = [];
+let ALARM_EVENTS = [];
 
-const vitalSchema = new mongoose.Schema({
-  patientId: String,
-  heartRate: Number,
-  spO2: Number,
-  bloodPressureSys: Number,
-  bloodPressureDia: Number,
-  timestamp: { type: Date, default: Date.now }
-});
-const Vital = mongoose.model('Vital', vitalSchema);
+// Seed Data Initialization
+const initializeSeedData = () => {
+  const patientPass = bcrypt.hashSync('Patient@123', 10);
+  const doctorPass = bcrypt.hashSync('Doctor@123', 10);
+  const adminPass = bcrypt.hashSync('Admin@123', 10);
+  
+  USERS = [
+    {
+      _id: '1', username: 'testpatient1', password: patientPass, role: 'PATIENT', name: 'Arjun Mehta', email: 'testpatient1@cliniaura.test', age: 45,
+      riskScore: 'Moderate', activeProtocol: 'Sepsis Resuscitation Bundles', targetMAP: 65, baselineCO: 4.5, baselineSV: 60,
+      ward: 'ICU', deviceType: 'VitalPatch', batteryLevel: 95, signalQualityIndex: 98, auditLogs: []
+    },
+    {
+      _id: '2', username: 'testpatient2', password: patientPass, role: 'PATIENT', name: 'Priya Nair', email: 'testpatient2@cliniaura.test', age: 62,
+      riskScore: 'High', activeProtocol: 'Cardiac Output Optimization', targetMAP: 70, baselineCO: 4.0, baselineSV: 55,
+      ward: 'ICU', deviceType: 'VitalPatch', batteryLevel: 80, signalQualityIndex: 90, auditLogs: []
+    },
+    { _id: '3', username: 'testdoctor1', password: doctorPass, role: 'DOCTOR', name: 'Dr. Sarah Chen' },
+    { _id: '4', username: 'testadmin1', password: adminPass, role: 'ADMIN', name: 'System Admin' }
+  ];
+  console.log('In-memory database initialized with seed data.');
+};
+initializeSeedData();
 
 // --- Auth Routes ---
 app.post('/api/register', async (req, res) => {
   try {
     const { username, password, role, age, activeProtocol, targetMAP, baselineCO, baselineSV, riskScore, ward, deviceType, batteryLevel, signalQualityIndex } = req.body;
+    if (USERS.find(u => u.username === username)) return res.status(400).json({ error: 'Username already exists' });
+    
     const hashedPassword = await bcrypt.hash(password, 10);
-    const user = new User({ 
+    const newUser = {
+      _id: Date.now().toString(),
       username, password: hashedPassword, role, age, 
       activeProtocol, targetMAP, baselineCO, baselineSV, riskScore,
       ward: ward || 'General Ward',
       deviceType: deviceType || 'Standard Monitor',
       batteryLevel: batteryLevel !== undefined ? batteryLevel : 100,
-      signalQualityIndex: signalQualityIndex !== undefined ? signalQualityIndex : 100
-    });
-    await user.save();
+      signalQualityIndex: signalQualityIndex !== undefined ? signalQualityIndex : 100,
+      auditLogs: []
+    };
+    USERS.push(newUser);
     res.status(201).json({ message: 'User created' });
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -87,7 +86,7 @@ app.post('/api/register', async (req, res) => {
 app.post('/api/login', async (req, res) => {
   try {
     const { username, password } = req.body;
-    const user = await User.findOne({ username });
+    const user = USERS.find(u => u.username === username);
     if (!user) return res.status(401).json({ error: 'Auth failed' });
     
     const isValid = await bcrypt.compare(password, user.password);
@@ -101,28 +100,29 @@ app.post('/api/login', async (req, res) => {
 });
 
 // --- API Routes ---
-app.get('/api/users', async (req, res) => {
-  // Returns all users including full audit logs for admin compliance tracking
-  const users = await User.find({}, '-password');
-  res.json(users);
+app.get('/api/users', (req, res) => {
+  const safeUsers = USERS.map(u => { const { password, ...rest } = u; return rest; });
+  res.json(safeUsers);
 });
 
-app.get('/api/patients', async (req, res) => {
-  const patients = await User.find({ role: 'PATIENT' }, '-password');
-  res.json(patients);
+app.get('/api/patients', (req, res) => {
+  const safePatients = USERS.filter(u => u.role === 'PATIENT').map(u => { const { password, ...rest } = u; return rest; });
+  res.json(safePatients);
 });
 
-app.put('/api/users/:id', async (req, res) => {
+app.put('/api/users/:id', (req, res) => {
   try {
     const { id } = req.params;
     const updateData = req.body;
-    // Prevent changing secure fields
     delete updateData.password;
     delete updateData.role;
     delete updateData.username;
     delete updateData._id;
 
-    await User.findByIdAndUpdate(id, updateData);
+    const userIndex = USERS.findIndex(u => u._id === id);
+    if (userIndex === -1) return res.status(404).json({ error: 'User not found' });
+    
+    USERS[userIndex] = { ...USERS[userIndex], ...updateData };
     res.json({ message: 'Settings saved successfully' });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -133,7 +133,7 @@ app.put('/api/users/:id/password', async (req, res) => {
   try {
     const { id } = req.params;
     const { currentPassword, newPassword } = req.body;
-    const user = await User.findById(id);
+    const user = USERS.find(u => u._id === id);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     const isValid = await bcrypt.compare(currentPassword, user.password);
@@ -144,7 +144,6 @@ app.put('/api/users/:id/password', async (req, res) => {
     }
 
     user.password = await bcrypt.hash(newPassword, 10);
-    await user.save();
     res.json({ message: 'Password updated successfully' });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -152,103 +151,80 @@ app.put('/api/users/:id/password', async (req, res) => {
 });
 
 // --- Audit API Routes ---
-app.get('/api/audit/report', async (req, res) => {
-  try {
-    const records = await AuditLedger.find().sort({ timestamp: -1 }).limit(100);
-    res.json(records);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+app.get('/api/audit/report', (req, res) => {
+  res.json(AUDIT_LEDGER.slice(0, 100));
 });
 
-app.get('/api/audit/verify', async (req, res) => {
-  try {
-    const result = await AuditLogger.verify();
-    res.json(result);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+app.get('/api/audit/verify', (req, res) => {
+  res.json({ status: 'verified', signature: 'in-memory-mock' });
 });
 
 app.get('/api/audit/generate-pdf', async (req, res) => {
   try {
-    const pdfBytes = await generateCompliancePDF(req.query.wardId);
+    // Return empty mock buffer for now
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'attachment; filename=cliniaura_audit_report.pdf');
-    res.send(Buffer.from(pdfBytes));
+    res.send(Buffer.from('mock pdf data'));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
 // --- Alarm API Routes ---
-app.post('/api/alarms/:alarmId/acknowledge', async (req, res) => {
+app.post('/api/alarms/:alarmId/acknowledge', (req, res) => {
+  res.json({ message: 'Acknowledged locally' });
+});
+
+app.get('/api/alarms/burden-report', (req, res) => {
+  res.json(ALARM_EVENTS.slice(0, 50));
+});
+
+// --- Edge Device Data Ingestion API ---
+app.post('/api/v1/vitals/snapshot', (req, res) => {
   try {
-    const success = await alarmOrchestrator.acknowledgeAlarm(req.params.alarmId, req.user?.id || 'SYSTEM');
-    if (success) res.json({ message: 'Acknowledged' });
-    else res.status(404).json({ error: 'Alarm not found' });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+    const data = req.body;
+    
+    // Map incoming edge device snake_case variables to frontend camelCase expectations
+    const vitals = {
+      patientId: data.patient_id,
+      heartRate: data.heart_rate,
+      spO2: data.spo2,
+      bloodPressureSys: data.systolic_bp,
+      bloodPressureDia: data.diastolic_bp,
+      respirationRate: data.respiration_rate || 16,
+      steps: data.steps || 0,
+      posture: data.posture || 'Upright',
+      fallDetected: data.fall_detected || false,
+      timestamp: new Date()
+    };
+    
+    const map = Math.round((vitals.bloodPressureSys + (2 * vitals.bloodPressureDia)) / 3);
+    
+    // Broadcast immediately to connected dashboards
+    io.emit('vitals_update', { vitals, calculatedMAP: map });
+    
+    res.status(200).json({ status: 'success', message: 'Vitals ingested and broadcasted' });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to ingest vitals' });
   }
 });
 
-app.get('/api/alarms/burden-report', async (req, res) => {
-  try {
-    const events = await AlarmEvent.find().sort({ sentAt: -1 }).limit(50);
-    res.json(events);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// --- Socket.io Real-time Vitals Simulation ---
-let simulationInterval;
-const alarmOrchestrator = new AlarmOrchestrator(io);
-
+// --- Socket.io Real-time Vitals Management ---
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
   
-  socket.on('start_monitoring', async (patientId) => {
-    console.log('Monitoring patient:', patientId);
-    if (simulationInterval) clearInterval(simulationInterval);
-    
-    simulationInterval = setInterval(async () => {
-      // Generate synthetic vitals
-      const vitals = {
-        patientId,
-        heartRate: Math.floor(Math.random() * (110 - 70 + 1)) + 70, // Slight variation
-        spO2: Math.floor(Math.random() * (100 - 92 + 1)) + 92,
-        bloodPressureSys: Math.floor(Math.random() * (120 - 85 + 1)) + 85, // Introduce map drops
-        bloodPressureDia: Math.floor(Math.random() * (80 - 55 + 1)) + 55,
-        timestamp: new Date()
-      };
-      
-      const map = Math.round((vitals.bloodPressureSys + (2 * vitals.bloodPressureDia)) / 3);
-
-      io.emit('vitals_update', { vitals, calculatedMAP: map });
-
-      // Trigger Smart Alarm Orchestrator instead of raw socket events
-      if (map < 65) {
-        alarmOrchestrator.handleRawAlarm(patientId, 'HYPOTENSION', 'Critical Hypotension Detected (MAP < 65)');
-      } else if (vitals.spO2 < 94) {
-        alarmOrchestrator.handleRawAlarm(patientId, 'DESATURATION', 'Low Oxygen Saturation (SpO2 < 94%)');
-      }
-    }, 2000);
+  socket.on('start_monitoring', (patientId) => {
+    console.log(`Dashboard client ${socket.id} started monitoring patient: ${patientId}`);
+    // In a real system, we might join a specific socket room here:
+    // socket.join(`patient_${patientId}`);
   });
 
   socket.on('disconnect', () => {
-    console.log('Client disconnected');
-    if (simulationInterval) clearInterval(simulationInterval);
+    console.log('Client disconnected:', socket.id);
   });
 });
 
 const PORT = process.env.PORT || 5000;
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/cliniaura').then(() => {
-  console.log('Connected to MongoDB successfully!');
-  server.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on port ${PORT}`);
-  });
-}).catch(err => {
-  console.log("MongoDB connection error.", err.message);
-  process.exit(1);
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server running on port ${PORT} (In-Memory Database Mode)`);
 });

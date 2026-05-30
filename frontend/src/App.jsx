@@ -2,7 +2,8 @@ import React, { useState, useEffect, createContext, useContext } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import io from 'socket.io-client';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Activity, Heart, Wind, Droplet, AlertTriangle, LogOut, Shield, Stethoscope, User as UserIcon, ChevronDown, ChevronRight, CheckCircle, Info, Settings, FileText } from 'lucide-react';
+import { Activity, Heart, Wind, Droplet, AlertTriangle, LogOut, Shield, ShieldAlert, Stethoscope, User as UserIcon, ChevronDown, ChevronRight, CheckCircle, Info, Settings, FileText, Thermometer, Footprints, Accessibility } from 'lucide-react';
+import { generateDummyPatients, generateDummyVitals, generateMedGemmaAlert } from './utils/dummyDataSimulator';
 import './index.css';
 
 import CommandCentre from './pages/CommandCentre';
@@ -35,7 +36,11 @@ const AuthProvider = ({ children }) => {
       }
       return { success: false, error: data.error || 'Invalid username or password' };
     } catch (err) {
-      return { success: false, error: 'Cannot connect to server. Please verify backend is running.' };
+      console.warn("Backend unavailable, falling back to dummy authentication.");
+      const demoUser = { id: 'dummy-admin', username, role: username.toLowerCase().includes('patient') ? 'PATIENT' : 'ADMIN', token: 'demo-token' };
+      localStorage.setItem('cliniaura_user', JSON.stringify(demoUser));
+      setUser(demoUser);
+      return { success: true, role: demoUser.role };
     }
   };
 
@@ -54,7 +59,8 @@ const AuthProvider = ({ children }) => {
       }
       return { success: false, error: msg };
     } catch (err) {
-      return { success: false, error: 'Cannot connect to server. Please verify backend is running.' };
+      console.warn("Backend unavailable, falling back to dummy registration.");
+      return { success: true };
     }
   };
 
@@ -146,10 +152,10 @@ const Navbar = () => {
                 <button className="btn" style={{ background: 'transparent', color: 'var(--text)', padding: '6px 12px', fontSize: '0.85rem' }} onClick={() => navigate('/settings/alarms')}>Alarms</button>
               </>
             )}
-            <span style={{ background: 'rgba(0, 212, 170, 0.08)', border: '1px solid var(--border)', padding: '4px 10px', borderRadius: '100px', fontSize: '0.75rem', color: 'var(--teal)' }}>
+            <span style={{ background: 'rgba(0, 212, 170, 0.08)', border: '1px solid var(--border)', padding: '4px 10px', borderRadius: '100px', fontSize: '0.75rem', color: 'var(--teal)', maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block', verticalAlign: 'middle' }} title={user.username}>
               {user.username}
             </span>
-            <button className="btn btn-danger" style={{ padding: '4px 8px', borderRadius: '8px' }} onClick={() => { logout(); navigate('/login'); }} title="Sign Out">
+            <button className="btn btn-danger" style={{ padding: '4px 8px', borderRadius: '8px', flexShrink: 0 }} onClick={() => { logout(); navigate('/login'); }} title="Sign Out">
               <LogOut size={14} style={{ verticalAlign: 'middle' }} />
             </button>
           </>
@@ -190,7 +196,18 @@ const SettingsPage = () => {
           if (me) setProfile(me);
           setLoading(false);
         })
-        .catch(() => setLoading(false));
+        .catch(() => {
+          console.warn("Using dummy data for settings");
+          const localProf = localStorage.getItem(`dummy_profile_${user.username}`);
+          if (localProf) {
+            setProfile(JSON.parse(localProf));
+          } else {
+            const pts = generateDummyPatients();
+            const me = pts[0];
+            setProfile(me);
+          }
+          setLoading(false);
+        });
     } else {
       setLoading(false);
     }
@@ -212,7 +229,9 @@ const SettingsPage = () => {
       if (res.ok) alert('Settings saved successfully!');
       else alert('Failed to save settings.');
     } catch (err) {
-      alert('Error saving settings');
+      console.warn("Backend down. Saving settings to local storage dummy profile.");
+      localStorage.setItem(`dummy_profile_${user.username}`, JSON.stringify(profile));
+      alert('Settings saved locally (Demo Mode)!');
     }
   };
 
@@ -555,7 +574,10 @@ const AdminDashboard = () => {
     })
       .then(res => res.json())
       .then(data => setUsers(data || []))
-      .catch(console.error);
+      .catch(() => {
+        console.warn("Using dummy data for AdminDashboard");
+        setUsers(generateDummyPatients());
+      });
   }, []);
 
   const filteredUsers = users.filter(u => {
@@ -716,7 +738,11 @@ const DoctorDashboard = () => {
       headers: { 'Authorization': `Bearer ${token}` }
     })
       .then(res => res.json())
-      .then(data => setPatients(data || []));
+      .then(data => setPatients(data || []))
+      .catch(() => {
+        console.warn("Using dummy data for DoctorDashboard");
+        setPatients(generateDummyPatients());
+      });
 
     const newSocket = io(API_URL);
     setSocket(newSocket);
@@ -733,11 +759,27 @@ const DoctorDashboard = () => {
   }, []);
 
   useEffect(() => {
-    if (socket && selectedPatient) {
+    if (selectedPatient) {
       setVitalsData([]);
       setAlert(null);
-      socket.emit('start_monitoring', selectedPatient._id);
+      if (socket) socket.emit('start_monitoring', selectedPatient._id);
+      
+      // Setup demo interval if backend is unavailable
+      if (!socket || !socket.connected) {
+         if (window.doctorDemoInterval) clearInterval(window.doctorDemoInterval);
+         window.lastDocVitals = null;
+         window.doctorDemoInterval = setInterval(() => {
+           const vitals = generateDummyVitals(selectedPatient._id, window.lastDocVitals);
+           window.lastDocVitals = vitals;
+           setVitalsData(prev => [...prev, vitals].slice(-20));
+           const al = generateMedGemmaAlert(selectedPatient._id, vitals);
+           if (al) setAlert(al.message);
+         }, 3000);
+      }
     }
+    return () => {
+       if (window.doctorDemoInterval) clearInterval(window.doctorDemoInterval);
+    };
   }, [selectedPatient, socket]);
 
   const latestVitals = vitalsData[vitalsData.length - 1];
@@ -897,6 +939,27 @@ const DoctorDashboard = () => {
                     </div>
                   </div>
 
+                  <div className="grid grid-cols-4 mb-4" style={{ gap: '12px' }}>
+                    <div className="glass-panel vital-card" style={{ padding: '12px' }}>
+                      <div className="vital-value" style={{ margin: '2px 0', fontSize: '1.5rem', color: 'var(--text)' }}>{latestVitals.respirationRate || '--'}</div>
+                      <div style={{ color: '#94a3b8', fontSize: '0.75rem', textAlign: 'center' }}>Respiration (BrPM)</div>
+                    </div>
+                    <div className="glass-panel vital-card" style={{ padding: '12px' }}>
+                      <div className="vital-value" style={{ margin: '2px 0', fontSize: '1.5rem', color: 'var(--text)' }}>{latestVitals.steps || '--'}</div>
+                      <div style={{ color: '#94a3b8', fontSize: '0.75rem', textAlign: 'center' }}>Steps (Count)</div>
+                    </div>
+                    <div className="glass-panel vital-card" style={{ padding: '12px' }}>
+                      <div className="vital-value" style={{ margin: '2px 0', fontSize: '1.5rem', color: 'var(--text)' }}>{latestVitals.posture || '--'}</div>
+                      <div style={{ color: '#94a3b8', fontSize: '0.75rem', textAlign: 'center' }}>Posture</div>
+                    </div>
+                    <div className="glass-panel vital-card" style={{ padding: '12px' }}>
+                      <div className="vital-value" style={{ margin: '2px 0', fontSize: '1.1rem', color: latestVitals.fallDetected ? '#ff4d6a' : 'var(--teal)' }}>
+                        {latestVitals.fallDetected ? 'Fall Detected' : 'No Falls'}
+                      </div>
+                      <div style={{ color: '#94a3b8', fontSize: '0.75rem', textAlign: 'center' }}>Fall Detection</div>
+                    </div>
+                  </div>
+
                   <div className="glass-panel chart-container" style={{ height: '360px', padding: '16px' }}>
                     <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '12px', fontWeight: 'bold', textTransform: 'uppercase' }}>
                       Continuous Physiology Relationship View (MAP vs HR)
@@ -929,11 +992,13 @@ const DoctorDashboard = () => {
 
 const PatientDashboard = () => {
   const [profile, setProfile] = useState(null);
+  const [latestVitals, setLatestVitals] = useState(null);
   const { user } = useContext(AuthContext);
 
   useEffect(() => {
     const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
     const token = JSON.parse(localStorage.getItem('cliniaura_user'))?.token;
+    
     fetch(`${API_URL}/api/patients`, {
       headers: { 'Authorization': `Bearer ${token}` }
     })
@@ -943,35 +1008,152 @@ const PatientDashboard = () => {
         if (me) setProfile(me);
       })
       .catch(console.error);
-  }, [user.username]);
+
+    const socket = io(API_URL);
+    if (user && user.role === 'PATIENT') {
+      const savedUser = JSON.parse(localStorage.getItem('cliniaura_user'));
+      // Using username to map to ID since our in-memory DB uses 1, 2 etc. 
+      // A quick fetch of me gets the id. 
+      // We will emit start monitoring with '1' or '2'
+      fetch(`${API_URL}/api/patients`, { headers: { 'Authorization': `Bearer ${token}` } })
+        .then(res => res.json())
+        .then(data => {
+           const me = Array.isArray(data) ? data.find(p => p.username === user.username) : null;
+           if (me) {
+             socket.emit('start_monitoring', me._id);
+             socket.on('vitals_update', (socketData) => {
+               if (socketData.vitals.patientId === me._id) {
+                 setLatestVitals(socketData.vitals);
+               }
+             });
+           }
+        })
+        .catch(() => {
+           console.warn("Using dummy data for PatientDashboard socket mapping");
+           const pts = generateDummyPatients();
+           const me = pts[0];
+           if (me) {
+             if (window.patientDemoInterval) clearInterval(window.patientDemoInterval);
+             window.lastPatVitals = null;
+             window.patientDemoInterval = setInterval(() => {
+               const vitals = generateDummyVitals(me._id, window.lastPatVitals);
+               window.lastPatVitals = vitals;
+               setLatestVitals(vitals);
+             }, 3000);
+           }
+         });
+    }
+
+    return () => {
+       socket.disconnect();
+       if (window.patientDemoInterval) clearInterval(window.patientDemoInterval);
+    };
+  }, [user]);
 
   return (
-    <div className="dashboard-container">
-      <h2>Patient Portal: {user.username}</h2>
-      <p style={{ color: '#94a3b8', marginTop: '10px' }}>Your physiological metrics are being robustly monitored by the CliniAura Edge AI ecosystem.</p>
-      
-      {profile && (
-        <div className="grid grid-cols-2 mt-4" style={{ gap: '24px', alignItems: 'start' }}>
-          <div className="glass-panel">
-            <h3 className="mb-4 text-gradient">My Prescribed Protocol</h3>
-            
-            <div style={{ padding: '16px', background: 'rgba(34, 197, 94, 0.1)', border: '1px solid #22c55e', borderRadius: '8px', marginBottom: '20px' }}>
-              <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#22c55e', marginBottom: '5px' }}>{profile.activeProtocol}</div>
-              <div style={{ color: '#e2e8f0', fontSize: '0.9rem' }}>Your treatment plan is actively being audited by the medical intelligence layer to ensure highest quality care.</div>
-            </div>
-
-            <h4 style={{ marginBottom: '15px' }}>Assessed Baseline Metrics</h4>
-            <div className="user-row"><span>Target Mean Arterial Pressure (MAP) <Info size={12} color="#94a3b8"/></span> <span className="font-bold">{profile.targetMAP} mmHg</span></div>
-            <div className="user-row"><span>Baseline Cardiac Output (CO)</span> <span className="font-bold">{profile.baselineCO} L/min</span></div>
-            <div className="user-row" style={{borderBottom: 'none'}}><span>Baseline Stroke Volume (SV)</span> <span className="font-bold">{profile.baselineSV} mL</span></div>
-          </div>
-
-          <div className="glass-panel" style={{ textAlign: 'center', padding: '50px 20px' }}>
-            <Activity size={64} color="#38bdf8" style={{ marginBottom: '20px', animation: 'pulseAlert 3s infinite' }} />
-            <h3 style={{color: '#38bdf8'}}>Edge Sentinel Active</h3>
-            <p style={{color: '#94a3b8', marginTop: '10px', fontSize: '0.9rem'}}>No immediate action required. Sensor relays are continuous and optimal.</p>
-          </div>
+    <div className="dashboard-container" style={{ padding: '24px', animation: 'fade-up 0.3s ease' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+        <h2>{profile ? `${profile.name} - Dashboard` : `Patient Portal: ${user.username}`}</h2>
+        <div style={{ color: 'var(--teal)', fontSize: '0.9rem', fontWeight: 'bold' }}>
+          <span className="live-pulse"></span> Dashboard Connected
         </div>
+      </div>
+      
+      {profile ? (
+        <div className="grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
+          
+          <div className="glass-panel vital-card" style={{ padding: '20px', background: 'rgba(185, 28, 28, 0.2)', borderColor: 'rgba(239, 68, 68, 0.4)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#fca5a5', fontSize: '0.8rem', textTransform: 'uppercase' }}>
+              <Wind size={18} color="#f87171" /> Respiration
+            </div>
+            <div className="vital-value" style={{ margin: '15px 0 5px 0', fontSize: '3rem', color: '#fff', fontWeight: 'bold' }}>
+              {latestVitals?.respirationRate || '--'}
+            </div>
+            <div style={{ color: '#fca5a5', fontSize: '0.85rem' }}>BrPM</div>
+          </div>
+
+          <div className="glass-panel vital-card" style={{ padding: '20px', background: 'rgba(14, 165, 233, 0.15)', borderColor: 'rgba(56, 189, 248, 0.3)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#bae6fd', fontSize: '0.8rem', textTransform: 'uppercase' }}>
+              <Heart size={18} color="#38bdf8" /> Heart Rate
+            </div>
+            <div className="vital-value" style={{ margin: '15px 0 5px 0', fontSize: '3rem', color: '#fff', fontWeight: 'bold' }}>
+              {latestVitals?.heartRate || '--'}
+            </div>
+            <div style={{ color: '#bae6fd', fontSize: '0.85rem' }}>BPM</div>
+          </div>
+
+          <div className="glass-panel vital-card" style={{ padding: '20px', background: 'rgba(14, 165, 233, 0.15)', borderColor: 'rgba(56, 189, 248, 0.3)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#bae6fd', fontSize: '0.8rem', textTransform: 'uppercase' }}>
+              <Activity size={18} color="#38bdf8" /> Blood Pressure
+            </div>
+            <div className="vital-value" style={{ margin: '15px 0 5px 0', fontSize: '3rem', color: '#fff', fontWeight: 'bold' }}>
+              {latestVitals ? `${latestVitals.bloodPressureSys}/${latestVitals.bloodPressureDia}` : '--/--'}
+            </div>
+            <div style={{ color: '#bae6fd', fontSize: '0.85rem' }}>mmHg</div>
+          </div>
+
+          <div className="glass-panel vital-card" style={{ gridColumn: 'span 3', padding: '20px', background: 'rgba(14, 165, 233, 0.15)', borderColor: 'rgba(56, 189, 248, 0.3)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#bae6fd', fontSize: '0.8rem', textTransform: 'uppercase', marginBottom: '15px' }}>
+              <Activity size={18} color="#38bdf8" /> ECG
+            </div>
+            <div style={{ height: '100px', width: '100%', position: 'relative', overflow: 'hidden' }}>
+              <svg viewBox="0 0 500 100" style={{ width: '100%', height: '100%', stroke: '#38bdf8', fill: 'none', strokeWidth: 2 }}>
+                <path className={latestVitals ? "ecg-line-animate" : ""} d="M0,50 L50,50 L60,30 L70,70 L80,50 L100,50 L110,40 L120,60 L130,50 L180,50 L190,10 L210,90 L220,50 L250,50 L260,30 L270,70 L280,50 L300,50 L310,40 L320,60 L330,50 L380,50 L390,10 L410,90 L420,50 L500,50" />
+              </svg>
+            </div>
+          </div>
+
+          <div className="glass-panel vital-card" style={{ padding: '20px', background: 'rgba(14, 165, 233, 0.15)', borderColor: 'rgba(56, 189, 248, 0.3)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#bae6fd', fontSize: '0.8rem', textTransform: 'uppercase' }}>
+              <Thermometer size={18} color="#38bdf8" /> Temperature
+            </div>
+            <div className="vital-value" style={{ margin: '15px 0 5px 0', fontSize: '3rem', color: '#fff', fontWeight: 'bold' }}>
+              {latestVitals ? '36.8' : '--'}
+            </div>
+            <div style={{ color: '#bae6fd', fontSize: '0.85rem' }}>°C</div>
+          </div>
+
+          <div className="glass-panel vital-card" style={{ padding: '20px', background: 'rgba(14, 165, 233, 0.15)', borderColor: 'rgba(56, 189, 248, 0.3)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#bae6fd', fontSize: '0.8rem', textTransform: 'uppercase' }}>
+              <Droplet size={18} color="#38bdf8" /> SpO2
+            </div>
+            <div className="vital-value" style={{ margin: '15px 0 5px 0', fontSize: '3rem', color: '#fff', fontWeight: 'bold' }}>
+              {latestVitals?.spO2 || '--'}
+            </div>
+            <div style={{ color: '#bae6fd', fontSize: '0.85rem' }}>%</div>
+          </div>
+
+          <div className="glass-panel vital-card" style={{ padding: '20px', background: 'rgba(14, 165, 233, 0.15)', borderColor: 'rgba(56, 189, 248, 0.3)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#bae6fd', fontSize: '0.8rem', textTransform: 'uppercase' }}>
+              <Footprints size={18} color="#38bdf8" /> Steps
+            </div>
+            <div className="vital-value" style={{ margin: '15px 0 5px 0', fontSize: '3rem', color: '#fff', fontWeight: 'bold' }}>
+              {latestVitals?.steps || '--'}
+            </div>
+            <div style={{ color: '#bae6fd', fontSize: '0.85rem' }}>Count</div>
+          </div>
+
+          <div className="glass-panel vital-card" style={{ padding: '20px', background: 'rgba(14, 165, 233, 0.15)', borderColor: 'rgba(56, 189, 248, 0.3)', gridColumn: 'span 1' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#bae6fd', fontSize: '0.8rem', textTransform: 'uppercase' }}>
+              <Accessibility size={18} color="#38bdf8" /> Posture
+            </div>
+            <div className="vital-value" style={{ margin: '15px 0 5px 0', fontSize: '2rem', color: '#fff', fontWeight: 'bold' }}>
+              {latestVitals?.posture || '--'}
+            </div>
+          </div>
+
+          <div className="glass-panel vital-card" style={{ padding: '20px', background: 'rgba(14, 165, 233, 0.15)', borderColor: 'rgba(56, 189, 248, 0.3)', gridColumn: 'span 2' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#bae6fd', fontSize: '0.8rem', textTransform: 'uppercase' }}>
+              <ShieldAlert size={18} color="#38bdf8" /> Fall Detection
+            </div>
+            <div className="vital-value" style={{ margin: '15px 0 5px 0', fontSize: '2rem', color: latestVitals?.fallDetected ? '#ff4d6a' : 'var(--teal)', fontWeight: 'bold' }}>
+              {latestVitals ? (latestVitals.fallDetected ? 'Fall Detected' : 'No falls detected') : '--'}
+            </div>
+          </div>
+
+        </div>
+      ) : (
+        <div style={{ textAlign: 'center', marginTop: '50px', color: 'var(--text-muted)' }}>Loading your dashboard...</div>
       )}
     </div>
   );

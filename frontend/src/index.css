@@ -1267,3 +1267,25 @@ footer {
   border-bottom: 2px solid var(--teal);
   font-weight: 600;
 }
+
+.animate {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.6s ease-out, transform 0.6s ease-out;
+}
+.animate.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.ecg-line-animate {
+  stroke-dasharray: 1000;
+  stroke-dashoffset: 1000;
+  animation: drawEcg 3s linear infinite;
+}
+
+@keyframes drawEcg {
+  to {
+    stroke-dashoffset: 0;
+  }
+}

@@ -1,24 +1,12 @@
-const mongoose = require('mongoose');
 const crypto = require('crypto');
 
-const auditLedgerSchema = new mongoose.Schema({
-  eventType: { type: String, required: true },
-  patientId: { type: String },
-  userId: { type: String },
-  wardId: { type: String },
-  data: { type: mongoose.Schema.Types.Mixed },
-  timestamp: { type: Date, default: Date.now },
-  previousHash: { type: String, required: true },
-  currentHash: { type: String, required: true }
-});
-
-const AuditLedger = mongoose.model('AuditLedger', auditLedgerSchema);
+let auditLedgerDb = [];
 
 class AuditLogger {
   static async log(eventType, patientId, userId, data, wardId = 'general') {
     try {
       // Fetch the last record to get its hash
-      const lastRecord = await AuditLedger.findOne().sort({ _id: -1 }).exec();
+      const lastRecord = auditLedgerDb.length > 0 ? auditLedgerDb[auditLedgerDb.length - 1] : null;
       const previousHash = lastRecord ? lastRecord.currentHash : 'GENESIS';
 
       const timestamp = new Date();
@@ -28,7 +16,7 @@ class AuditLogger {
       const hashContent = `${eventType}${patientId || ''}${dataString}${timestamp.toISOString()}${previousHash}`;
       const currentHash = crypto.createHash('sha256').update(hashContent).digest('hex');
 
-      const auditRecord = new AuditLedger({
+      const auditRecord = {
         eventType,
         patientId,
         userId,
@@ -37,20 +25,19 @@ class AuditLogger {
         timestamp,
         previousHash,
         currentHash
-      });
+      };
 
-      await auditRecord.save();
+      auditLedgerDb.push(auditRecord);
       return auditRecord;
     } catch (error) {
       console.error('CRITICAL: Audit log failed to write', error);
-      // In a real system, failing to audit might halt the request depending on strictness.
     }
   }
 
   static async verify(fromTimestamp = new Date(0), toTimestamp = new Date()) {
-    const records = await AuditLedger.find({
-      timestamp: { $gte: fromTimestamp, $lte: toTimestamp }
-    }).sort({ timestamp: 1 });
+    const records = auditLedgerDb.filter(
+      r => r.timestamp >= fromTimestamp && r.timestamp <= toTimestamp
+    );
 
     if (records.length === 0) return { valid: true };
 
@@ -76,4 +63,4 @@ class AuditLogger {
   }
 }
 
-module.exports = { AuditLogger, AuditLedger };
+module.exports = { AuditLogger, getAuditLedger: () => auditLedgerDb };

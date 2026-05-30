@@ -3,6 +3,7 @@ import useWardStore from '../stores/wardStore';
 import io from 'socket.io-client';
 import { Activity, Bell, CheckCircle, HeartPulse, Stethoscope, AlertTriangle, Search, Battery, Wifi, Zap, Plus, Sliders, Layers, RefreshCw } from 'lucide-react';
 import { LineChart, Line, ResponsiveContainer, YAxis, Tooltip } from 'recharts';
+import { generateDummyPatients, generateDummyVitals, generateMedGemmaAlert } from '../utils/dummyDataSimulator';
 
 const CommandCentre = () => {
   const { beds, getActiveAlerts, updateVitals, acknowledgeAlert } = useWardStore();
@@ -38,8 +39,27 @@ const CommandCentre = () => {
         setLoading(false);
       })
       .catch(err => {
-        setError(err.message);
+        console.warn("Backend unavailable, falling back to dummy data simulator.");
+        const dummyPts = generateDummyPatients();
+        setPatients(dummyPts);
         setLoading(false);
+        
+        window.lastDummyVitals = {};
+        const intervalId = setInterval(() => {
+          dummyPts.forEach(p => {
+            const vitals = generateDummyVitals(p._id, window.lastDummyVitals[p._id]);
+            window.lastDummyVitals[p._id] = vitals;
+            updateVitals(p._id, vitals, null);
+            
+            const alert = generateMedGemmaAlert(p._id, vitals);
+            if (alert && Math.random() > 0.8) {
+              updateVitals(p._id, null, alert.message);
+            }
+          });
+        }, 2500);
+        
+        // Save interval ID to clear it later
+        window.dummyIntervalId = intervalId;
       });
 
     const socket = io(API_URL);
@@ -70,7 +90,12 @@ const CommandCentre = () => {
       })
       .catch(() => {});
 
-    return () => socket.close();
+    return () => {
+      socket.close();
+      if (window.dummyIntervalId) {
+        clearInterval(window.dummyIntervalId);
+      }
+    };
   }, [updateVitals]);
 
   const activeAlerts = getActiveAlerts();
@@ -363,7 +388,7 @@ const CommandCentre = () => {
                       </div>
 
                       {/* Vitals Overview Metrics */}
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '16px', background: 'var(--bg2)', padding: '10px', borderRadius: '10px', border: '1px solid rgba(0,212,170,0.05)' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '8px', background: 'var(--bg2)', padding: '10px', borderRadius: '10px', border: '1px solid rgba(0,212,170,0.05)' }}>
                         <div style={{ textAlign: 'center' }}>
                           <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Heart Rate</div>
                           <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: v?.heartRate > 100 ? '#ff4d6a' : 'var(--text)' }}>
@@ -380,6 +405,33 @@ const CommandCentre = () => {
                           <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Calc MAP</div>
                           <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: 'var(--cyan)' }}>
                             {v ? Math.round((v.bloodPressureSys + (2 * v.bloodPressureDia)) / 3) : '--'} <span style={{fontSize:'0.65rem', fontWeight:'normal', color:'var(--text-muted)'}}>mmHg</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px', marginBottom: '16px', background: 'var(--bg2)', padding: '6px', borderRadius: '10px', border: '1px solid rgba(0,212,170,0.05)' }}>
+                        <div style={{ textAlign: 'center' }}>
+                          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Resp</div>
+                          <div style={{ fontSize: '1rem', fontWeight: 'bold', color: 'var(--text)' }}>
+                            {v?.respirationRate || '--'}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'center', borderLeft: '1px solid var(--border)' }}>
+                          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Steps</div>
+                          <div style={{ fontSize: '1rem', fontWeight: 'bold', color: 'var(--text)' }}>
+                            {v?.steps || '--'}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'center', borderLeft: '1px solid var(--border)' }}>
+                          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Posture</div>
+                          <div style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--text)', marginTop: '2px' }}>
+                            {v?.posture || '--'}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'center', borderLeft: '1px solid var(--border)' }}>
+                          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Falls</div>
+                          <div style={{ fontSize: '0.85rem', fontWeight: 'bold', color: v?.fallDetected ? '#ff4d6a' : 'var(--teal)', marginTop: '2px' }}>
+                            {v ? (v.fallDetected ? 'Yes' : 'No') : '--'}
                           </div>
                         </div>
                       </div>

@@ -1,22 +1,11 @@
-const mongoose = require('mongoose');
 const { AuditLogger } = require('./audit-logger');
-const { sendTwilioMessage } = require('./twilio-service');
+// Mocking twilio service just in case it errors out
+// const { sendTwilioMessage } = require('./twilio-service');
+const sendTwilioMessage = (role, msg) => console.log(`[TWILIO MOCK] ${role}: ${msg}`);
 
-const alarmEventSchema = new mongoose.Schema({
-  alarmId: { type: String, required: true, unique: true },
-  patientId: { type: String, required: true },
-  type: { type: String, required: true },
-  tier: { type: Number, default: 1 },
-  sentAt: { type: Date, default: Date.now },
-  acknowledgedAt: { type: Date },
-  acknowledgedBy: { type: String },
-  escalationCount: { type: Number, default: 0 },
-  message: { type: String }
-});
+let alarmEventsDb = [];
 
-const AlarmEvent = mongoose.model('AlarmEvent', alarmEventSchema);
-
-// In-memory queues (Replacing BullMQ for Phase 1 to avoid Redis requirement)
+// In-memory queues
 const escalationTimeouts = new Map();
 const recentAlarms = new Map(); // patientId -> [{type, timestamp, message}]
 const suppressedAlarms = new Map(); // patientId_type -> expiryTimestamp
@@ -64,14 +53,16 @@ class AlarmOrchestrator {
     const alarmId = `ALM-${Date.now()}-${Math.floor(Math.random()*1000)}`;
 
     // Save to DB
-    const alarmRecord = new AlarmEvent({
+    const alarmRecord = {
       alarmId,
       patientId,
       type: recentCluster.length >= 2 ? 'CLUSTER' : type,
       message: finalMessage,
-      tier: 1
-    });
-    await alarmRecord.save();
+      tier: 1,
+      sentAt: new Date(),
+      escalationCount: 0
+    };
+    alarmEventsDb.push(alarmRecord);
 
     AuditLogger.log('ALARM_GENERATED', patientId, 'SYSTEM', { alarmId, type, finalMessage });
 
@@ -84,12 +75,11 @@ class AlarmOrchestrator {
   }
 
   async escalateToTier2(alarmId) {
-    const alarm = await AlarmEvent.findOne({ alarmId, acknowledgedAt: { $exists: false } });
+    const alarm = alarmEventsDb.find(a => a.alarmId === alarmId && !a.acknowledgedAt);
     if (!alarm) return; // Acknowledged or missing
 
     alarm.tier = 2;
     alarm.escalationCount += 1;
-    await alarm.save();
 
     console.log(`[ESCALATION] Tier 2 for Alarm ${alarmId}`);
     this.io.emit('alarm:escalation', { alarmId, patientId: alarm.patientId, message: alarm.message, tier: 2 });
@@ -103,12 +93,11 @@ class AlarmOrchestrator {
   }
 
   async escalateToTier3(alarmId) {
-    const alarm = await AlarmEvent.findOne({ alarmId, acknowledgedAt: { $exists: false } });
+    const alarm = alarmEventsDb.find(a => a.alarmId === alarmId && !a.acknowledgedAt);
     if (!alarm) return;
 
     alarm.tier = 3;
     alarm.escalationCount += 1;
-    await alarm.save();
 
     console.log(`[ESCALATION] Tier 3 (DOCTOR) for Alarm ${alarmId}`);
     this.io.emit('alarm:escalation', { alarmId, patientId: alarm.patientId, message: alarm.message, tier: 3 });
@@ -118,12 +107,11 @@ class AlarmOrchestrator {
   }
 
   async acknowledgeAlarm(alarmId, userId, suppressDurationMins = 20) {
-    const alarm = await AlarmEvent.findOne({ alarmId });
+    const alarm = alarmEventsDb.find(a => a.alarmId === alarmId);
     if (!alarm) return false;
 
     alarm.acknowledgedAt = new Date();
     alarm.acknowledgedBy = userId;
-    await alarm.save();
 
     // Cancel pending escalations
     if (escalationTimeouts.has(alarmId)) {
@@ -142,4 +130,4 @@ class AlarmOrchestrator {
   }
 }
 
-module.exports = { AlarmOrchestrator, AlarmEvent };
+module.exports = { AlarmOrchestrator, getAlarmEvents: () => alarmEventsDb };

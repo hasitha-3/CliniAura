@@ -48,7 +48,7 @@ const HomePage = () => {
           </div>
           <div className="hero-stats">
             <div className="hero-stat"><div className="num">60%</div><div className="label">Warning signs missed</div></div>
-            <div className="hero-stat"><div className="num">4–8h</div><div class="label">Between spot checks</div></div>
+            <div className="hero-stat"><div className="num">4–8h</div><div className="label">Between spot checks</div></div>
             <div className="hero-stat"><div className="num">1 in 10</div><div className="label">Patients harmed globally</div></div>
           </div>
         </div>
@@ -63,19 +63,19 @@ const HomePage = () => {
             <div className="vitals-grid">
               <div className="vital-item vital-hr">
                 <div className="vital-label">Heart Rate</div>
-                <div className="vital-value">76 <span className="vital-unit">bpm</span></div>
+                <div className="vital-value">- <span className="vital-unit">bpm</span></div>
               </div>
               <div className="vital-item vital-spo2">
                 <div className="vital-label">SpO2</div>
-                <div className="vital-value">98 <span className="vital-unit">%</span></div>
+                <div className="vital-value">- <span className="vital-unit">%</span></div>
               </div>
               <div className="vital-item vital-bp">
                 <div className="vital-label">Blood Pressure</div>
-                <div className="vital-value">120<span className="vital-unit">/80</span></div>
+                <div className="vital-value">-<span className="vital-unit">/-</span></div>
               </div>
               <div className="vital-item vital-temp">
                 <div className="vital-label">Temperature</div>
-                <div className="vital-value">36.8 <span className="vital-unit">°C</span></div>
+                <div className="vital-value">- <span className="vital-unit">°C</span></div>
               </div>
             </div>
             <div className="ai-alert">
