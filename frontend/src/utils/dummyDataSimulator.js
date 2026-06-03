@@ -3,9 +3,13 @@
 export const generateDummyPatients = () => [
   {
     _id: "dummy-patient-1",
+    patientId: "CLA-2026-00001",
     username: "JDoe_B21",
     name: "John Doe",
     age: 55,
+    gender: "Male",
+    primaryDiagnosis: "Severe Sepsis",
+    assignedNurses: ["testnurse1"],
     role: "PATIENT",
     ward: "Intensive Care",
     riskScore: "Critical",
@@ -19,9 +23,13 @@ export const generateDummyPatients = () => [
   },
   {
     _id: "dummy-patient-2",
+    patientId: "CLA-2026-00002",
     username: "ASmith_S4",
     name: "Alice Smith",
     age: 62,
+    gender: "Female",
+    primaryDiagnosis: "Post-Op Cardiac Surgery",
+    assignedNurses: ["testnurse1"],
     role: "PATIENT",
     ward: "Step-Down Unit",
     riskScore: "High",
@@ -35,9 +43,13 @@ export const generateDummyPatients = () => [
   },
   {
     _id: "dummy-patient-3",
+    patientId: "CLA-2026-00003",
     username: "RJones_G11",
     name: "Robert Jones",
     age: 42,
+    gender: "Male",
+    primaryDiagnosis: "Pneumonia",
+    assignedNurses: ["testnurse1"],
     role: "PATIENT",
     ward: "General Ward",
     riskScore: "Low",
@@ -51,9 +63,13 @@ export const generateDummyPatients = () => [
   },
   {
     _id: "dummy-patient-4",
+    patientId: "CLA-2026-00004",
     username: "MWilliams_W2",
     name: "Mary Williams",
     age: 71,
+    gender: "Female",
+    primaryDiagnosis: "Observation",
+    assignedNurses: ["testnurse1"],
     role: "PATIENT",
     ward: "General Ward",
     riskScore: "Medium",
@@ -71,20 +87,20 @@ export const generateDummyPatients = () => [
 const addNoise = (val, maxDelta) => val + Math.floor(Math.random() * (maxDelta * 2 + 1)) - maxDelta;
 
 export const generateDummyVitals = (patientId, previousVitals = null) => {
-  // Edge Case 1: Sensor Disconnected
-  if (patientId === "dummy-patient-4") {
-    return {
+  // Simulate occasional realistic artifacts instead of complete sensor failure
+  if (patientId === "dummy-patient-4" && Math.random() > 0.95) {
+     return {
       patientId,
       timestamp: new Date().toISOString(),
-      heartRate: null,
-      spO2: null,
-      bloodPressureSys: null,
-      bloodPressureDia: null,
-      respirationRate: null,
+      heartRate: 75,
+      spO2: 98,
+      bloodPressureSys: 120,
+      bloodPressureDia: 80,
+      respirationRate: 16,
       steps: 0,
       posture: "Unknown",
       fallDetected: false,
-      sensorError: true
+      sensorError: false
     };
   }
 

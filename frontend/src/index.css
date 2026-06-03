@@ -1093,9 +1093,8 @@ footer {
 }
 
 .dashboard-container {
-  padding: 32px;
+  padding: 80px 32px 32px 32px; /* reduced top gap */
   flex: 1;
-  margin-top: 120px; /* offset fixed navbar */
 }
 
 .grid {
@@ -1193,6 +1192,7 @@ footer {
 }
 .risk-Critical { background: #ff4d6a; color: white; }
 .risk-High { background: #ffa64d; color: var(--bg); }
+.risk-Medium { background: #eab308; color: var(--bg); }
 .risk-Moderate { background: var(--cyan); color: var(--bg); }
 .risk-Low { background: var(--teal); color: var(--bg); }
 

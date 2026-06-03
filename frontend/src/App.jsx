@@ -9,7 +9,9 @@ import './index.css';
 import CommandCentre from './pages/CommandCentre';
 import AuditDashboard from './pages/AuditDashboard';
 import AlarmSettings from './pages/AlarmSettings';
+import AlertHistory from './pages/AlertHistory';
 import HomePage from './pages/HomePage';
+import EHRManager from './components/EHRManager';
 
 export const AuthContext = createContext(null);
 
@@ -130,21 +132,26 @@ const Navbar = () => {
         CliniAura
       </a>
       
-      <div className="nav-links" style={{ display: window.innerWidth <= 900 && menuOpen ? 'flex' : undefined, flexDirection: window.innerWidth <= 900 ? 'column' : 'row', position: window.innerWidth <= 900 ? 'absolute' : 'static', top: '100%', left: 0, right: 0, background: window.innerWidth <= 900 ? 'var(--surface)' : 'transparent', padding: window.innerWidth <= 900 ? '1.5rem' : 0, borderBottom: window.innerWidth <= 900 ? '1px solid var(--border)' : 'none' }}>
-        <a href="#problem" onClick={(e) => handleNavClick(e, '#problem')}>Problem</a>
-        <a href="#solution" onClick={(e) => handleNavClick(e, '#solution')}>Solution</a>
-        <a href="#technology" onClick={(e) => handleNavClick(e, '#technology')}>Technology</a>
-        <a href="#team" onClick={(e) => handleNavClick(e, '#team')}>Team</a>
-        <a href="#roadmap" onClick={(e) => handleNavClick(e, '#roadmap')}>Roadmap</a>
-        <a href="#contact" onClick={(e) => handleNavClick(e, '#contact')} className="nav-cta">Get in Touch</a>
-      </div>
+      {!user && (
+        <div className="nav-links" style={{ display: window.innerWidth <= 900 && menuOpen ? 'flex' : undefined, flexDirection: window.innerWidth <= 900 ? 'column' : 'row', position: window.innerWidth <= 900 ? 'absolute' : 'static', top: '100%', left: 0, right: 0, background: window.innerWidth <= 900 ? 'var(--surface)' : 'transparent', padding: window.innerWidth <= 900 ? '1.5rem' : 0, borderBottom: window.innerWidth <= 900 ? '1px solid var(--border)' : 'none' }}>
+          <a href="#problem" onClick={(e) => handleNavClick(e, '#problem')}>Problem</a>
+          <a href="#solution" onClick={(e) => handleNavClick(e, '#solution')}>Solution</a>
+          <a href="#technology" onClick={(e) => handleNavClick(e, '#technology')}>Technology</a>
+          <a href="#team" onClick={(e) => handleNavClick(e, '#team')}>Team</a>
+          <a href="#roadmap" onClick={(e) => handleNavClick(e, '#roadmap')}>Roadmap</a>
+          <a href="#contact" onClick={(e) => handleNavClick(e, '#contact')} className="nav-cta">Get in Touch</a>
+        </div>
+      )}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
         {user ? (
           <>
             <button className="btn" style={{ background: 'transparent', color: 'var(--text)', padding: '6px 12px', fontSize: '0.85rem' }} onClick={() => navigate('/dashboard')}>Dashboard</button>
-            {(user.role === 'DOCTOR' || user.role === 'ADMIN') && (
-              <button className="btn" style={{ background: 'transparent', color: 'var(--text)', padding: '6px 12px', fontSize: '0.85rem' }} onClick={() => navigate('/command-centre')}>Command</button>
+            {(user.role === 'DOCTOR' || user.role === 'ADMIN' || user.role === 'NURSE') && (
+              <>
+                <button className="btn" style={{ background: 'transparent', color: 'var(--text)', padding: '6px 12px', fontSize: '0.85rem' }} onClick={() => navigate('/command-centre')}>Command</button>
+                <button className="btn" style={{ background: 'transparent', color: 'var(--text)', padding: '6px 12px', fontSize: '0.85rem' }} onClick={() => navigate('/alert-history')}>History</button>
+              </>
             )}
             {user.role === 'ADMIN' && (
               <>
@@ -152,6 +159,7 @@ const Navbar = () => {
                 <button className="btn" style={{ background: 'transparent', color: 'var(--text)', padding: '6px 12px', fontSize: '0.85rem' }} onClick={() => navigate('/settings/alarms')}>Alarms</button>
               </>
             )}
+            <button className="btn" style={{ background: 'transparent', color: 'var(--text)', padding: '6px 12px', fontSize: '0.85rem' }} onClick={() => navigate('/settings')}>Settings</button>
             <span style={{ background: 'rgba(0, 212, 170, 0.08)', border: '1px solid var(--border)', padding: '4px 10px', borderRadius: '100px', fontSize: '0.75rem', color: 'var(--teal)', maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block', verticalAlign: 'middle' }} title={user.username}>
               {user.username}
             </span>
@@ -183,6 +191,10 @@ const SettingsPage = () => {
   const [pwdSuccess, setPwdSuccess] = useState('');
   const [showPwdSection, setShowPwdSection] = useState(false);
 
+  // MedGemma Integrations
+  const [apiKey, setApiKey] = useState(localStorage.getItem('medgemma_api_key') || '');
+  const [health, setHealth] = useState(null);
+
   useEffect(() => {
     const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
     if (user && user.role === 'PATIENT') {
@@ -212,6 +224,21 @@ const SettingsPage = () => {
       setLoading(false);
     }
   }, [user]);
+
+  // Fetch MedGemma Health Status
+  useEffect(() => {
+    if (user?.role === 'DOCTOR' || user?.role === 'ADMIN') {
+      fetch('http://localhost:8000/api/v1/health')
+        .then(res => res.json())
+        .then(data => setHealth(data))
+        .catch(() => setHealth({ status: 'unreachable' }));
+    }
+  }, [user]);
+
+  const saveApiKey = () => {
+    localStorage.setItem('medgemma_api_key', apiKey);
+    alert('MedGemma API Key Saved Locally!');
+  };
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -286,27 +313,19 @@ const SettingsPage = () => {
           </div>
           
           {user?.role === 'PATIENT' && (
-            <div className="grid grid-cols-2 mt-4" style={{borderTop: '1px solid #334155', paddingTop: '20px'}}>
-              <div className="input-group">
-                <label className="input-label">Age</label>
-                <input className="input-field" type="number" value={profile.age || ''} onChange={e => setProfile({...profile, age: Number(e.target.value)})} required />
-              </div>
-              <div className="input-group">
-                <label className="input-label">Target MAP (mmHg)</label>
-                <input className="input-field" type="number" value={profile.targetMAP || ''} onChange={e => setProfile({...profile, targetMAP: Number(e.target.value)})} required />
-              </div>
-              <div className="input-group">
-                <label className="input-label">Baseline CO (L/min)</label>
-                <input className="input-field" type="number" step="0.1" value={profile.baselineCO || ''} onChange={e => setProfile({...profile, baselineCO: Number(e.target.value)})} required />
-              </div>
-              <div className="input-group">
-                <label className="input-label">Baseline SV (mL/beat)</label>
-                <input className="input-field" type="number" value={profile.baselineSV || ''} onChange={e => setProfile({...profile, baselineSV: Number(e.target.value)})} required />
-              </div>
+            <div style={{ padding: '16px', background: 'rgba(0, 212, 170, 0.05)', borderRadius: '8px', marginTop: '20px', border: '1px solid var(--border)' }}>
+              <h4 style={{ margin: '0 0 8px 0' }}>Need Help?</h4>
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '12px' }}>Your medical settings are managed by your assigned nurse. If you have any concerns or need assistance, please reach out to them directly.</p>
+              <button 
+                type="button"
+                className="btn" 
+                style={{ background: 'var(--teal)', color: 'white', fontSize: '0.85rem', padding: '6px 12px' }}
+                onClick={() => alert("Your assigned nurse has been notified. They will contact you shortly.")}
+              >
+                Contact Assigned Nurse
+              </button>
             </div>
           )}
-          
-          {user?.role === 'PATIENT' && <button className="btn btn-primary" type="submit" style={{ width: '100%', marginTop: '20px' }}>Save Changes</button>}
         </form>
 
         <div style={{ borderTop: '1px solid var(--border)', marginTop: '30px', paddingTop: '20px' }}>
@@ -393,6 +412,42 @@ const SettingsPage = () => {
           )}
         </div>
 
+        {(user?.role === 'DOCTOR' || user?.role === 'ADMIN') && (
+          <div style={{ borderTop: '1px solid var(--border)', marginTop: '30px', paddingTop: '20px' }}>
+            <h3 style={{ fontSize: '1.1rem', marginBottom: '16px' }}>MedGemma AI Integration</h3>
+            <div className="glass-panel" style={{ background: 'rgba(0, 212, 170, 0.05)', borderColor: 'var(--teal)' }}>
+              
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <strong style={{ fontSize: '0.9rem' }}>Agent Connection Status</strong>
+                <span className={`badge-risk ${health?.status === 'healthy' ? 'risk-Low' : 'risk-Critical'}`}>
+                  {health ? health.status.toUpperCase() : 'CHECKING...'}
+                </span>
+              </div>
+              
+              {health && (
+                <div className="grid grid-cols-2" style={{ gap: '8px', fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '20px' }}>
+                  <div>Ollama: <span style={{color: health.ollama === 'ok' ? 'var(--teal)' : '#ff4d6a'}}>{health.ollama}</span></div>
+                  <div>ChromaDB: <span style={{color: health.chromadb === 'ok' ? 'var(--teal)' : '#ff4d6a'}}>{health.chromadb}</span></div>
+                </div>
+              )}
+
+              <div className="input-group">
+                <label className="input-label">MedGemma API Key</label>
+                <input 
+                  className="input-field" 
+                  type="password" 
+                  value={apiKey} 
+                  onChange={e => setApiKey(e.target.value)} 
+                  placeholder="Enter Agent API Key"
+                />
+              </div>
+              <button className="btn btn-secondary" onClick={saveApiKey} style={{ width: '100%', marginTop: '10px' }}>
+                Save API Key
+              </button>
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   );
@@ -427,7 +482,7 @@ const AuthPage = () => {
     if (mode === 'login') {
       const res = await login(username, password);
       if (res.success) {
-        if (res.role === 'DOCTOR' || res.role === 'ADMIN') {
+        if (res.role === 'DOCTOR' || res.role === 'ADMIN' || res.role === 'NURSE') {
           navigate('/command-centre');
         } else {
           navigate('/dashboard');
@@ -598,25 +653,7 @@ const AdminDashboard = () => {
 
         {/* Filters */}
         <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
-          <select
-            value={selectedRole}
-            onChange={e => setSelectedRole(e.target.value)}
-            style={{
-              background: 'var(--bg2)',
-              color: 'var(--text)',
-              border: '1px solid var(--border)',
-              padding: '6px 12px',
-              borderRadius: '8px',
-              fontSize: '0.85rem',
-              outline: 'none',
-              cursor: 'pointer'
-            }}
-          >
-            <option value="ALL">All System Roles</option>
-            <option value="PATIENT">Patients Only</option>
-            <option value="DOCTOR">Doctors</option>
-            <option value="ADMIN">Admins</option>
-          </select>
+
 
           <input
             type="text"
@@ -1054,7 +1091,16 @@ const PatientDashboard = () => {
   return (
     <div className="dashboard-container" style={{ padding: '24px', animation: 'fade-up 0.3s ease' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-        <h2>{profile ? `${profile.name} - Dashboard` : `Patient Portal: ${user.username}`}</h2>
+        <div>
+          <h2 style={{ margin: 0 }}>{profile ? `${profile.name} - Dashboard` : `${user.username}`}</h2>
+          {profile && (
+            <div style={{ fontSize: '0.85rem', color: 'var(--text-dim)', marginTop: '6px' }}>
+              <strong>ID:</strong> {profile.patientId || 'Pending'} &nbsp;|&nbsp; 
+              <strong>Age/Sex:</strong> {profile.age}{profile.gender ? ` / ${profile.gender}` : ''} &nbsp;|&nbsp; 
+              <strong>Diagnosis:</strong> {profile.primaryDiagnosis || 'Under Evaluation'}
+            </div>
+          )}
+        </div>
         <div style={{ color: 'var(--teal)', fontSize: '0.9rem', fontWeight: 'bold' }}>
           <span className="live-pulse"></span> Dashboard Connected
         </div>
@@ -1150,6 +1196,14 @@ const PatientDashboard = () => {
             <div className="vital-value" style={{ margin: '15px 0 5px 0', fontSize: '2rem', color: latestVitals?.fallDetected ? '#ff4d6a' : 'var(--teal)', fontWeight: 'bold' }}>
               {latestVitals ? (latestVitals.fallDetected ? 'Fall Detected' : 'No falls detected') : '--'}
             </div>
+          </div>
+
+          <div style={{ gridColumn: 'span 3' }}>
+            <EHRManager 
+              patientId={profile._id} 
+              patientName={profile.name || profile.username} 
+              patientAge={profile.age}
+            />
           </div>
 
         </div>
@@ -1264,7 +1318,8 @@ const App = () => {
           <Route path="/" element={<HomePage />} />
           <Route path="/login" element={<AuthPage />} />
           <Route path="/dashboard" element={<ProtectedRoute><DashboardRouter /></ProtectedRoute>} />
-          <Route path="/command-centre" element={<ProtectedRoute roleRequired={['DOCTOR', 'ADMIN']}><CommandCentre /></ProtectedRoute>} />
+          <Route path="/command-centre" element={<ProtectedRoute roleRequired={['DOCTOR', 'ADMIN', 'NURSE']}><CommandCentre /></ProtectedRoute>} />
+          <Route path="/alert-history" element={<ProtectedRoute roleRequired={['DOCTOR', 'ADMIN', 'NURSE']}><AlertHistory /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
           <Route path="/settings/alarms" element={<ProtectedRoute roleRequired="ADMIN"><AlarmSettings /></ProtectedRoute>} />
           <Route path="/admin/audit" element={<ProtectedRoute roleRequired="ADMIN"><AuditDashboard /></ProtectedRoute>} />

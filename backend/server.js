@@ -5,6 +5,21 @@ const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const cors = require('cors');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+
+// Ensure uploads directory exists
+const uploadDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir);
+}
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, uploadDir),
+  filename: (req, file, cb) => cb(null, `${req.body.patient_id || 'unknown'}_${Date.now()}.pdf`)
+});
+const upload = multer({ storage });
 
 const auditMiddleware = require('./middleware/audit-middleware');
 const { AuditLogger, AuditLedger } = require('./services/audit-logger');
@@ -40,20 +55,22 @@ const initializeSeedData = () => {
   const patientPass = bcrypt.hashSync('Patient@123', 10);
   const doctorPass = bcrypt.hashSync('Doctor@123', 10);
   const adminPass = bcrypt.hashSync('Admin@123', 10);
+  const nursePass = bcrypt.hashSync('Nurse@123', 10);
   
   USERS = [
     {
-      _id: '1', username: 'testpatient1', password: patientPass, role: 'PATIENT', name: 'Arjun Mehta', email: 'testpatient1@cliniaura.test', age: 45,
+      _id: '1', patientId: 'CLA-2026-00001', username: 'testpatient1', password: patientPass, role: 'PATIENT', name: 'Arjun Mehta', email: 'testpatient1@cliniaura.test', age: 45, gender: 'Male', primaryDiagnosis: 'Sepsis',
       riskScore: 'Moderate', activeProtocol: 'Sepsis Resuscitation Bundles', targetMAP: 65, baselineCO: 4.5, baselineSV: 60,
       ward: 'ICU', deviceType: 'VitalPatch', batteryLevel: 95, signalQualityIndex: 98, auditLogs: []
     },
     {
-      _id: '2', username: 'testpatient2', password: patientPass, role: 'PATIENT', name: 'Priya Nair', email: 'testpatient2@cliniaura.test', age: 62,
+      _id: '2', patientId: 'CLA-2026-00002', username: 'testpatient2', password: patientPass, role: 'PATIENT', name: 'Priya Nair', email: 'testpatient2@cliniaura.test', age: 62, gender: 'Female', primaryDiagnosis: 'Heart Failure',
       riskScore: 'High', activeProtocol: 'Cardiac Output Optimization', targetMAP: 70, baselineCO: 4.0, baselineSV: 55,
       ward: 'ICU', deviceType: 'VitalPatch', batteryLevel: 80, signalQualityIndex: 90, auditLogs: []
     },
     { _id: '3', username: 'testdoctor1', password: doctorPass, role: 'DOCTOR', name: 'Dr. Sarah Chen' },
-    { _id: '4', username: 'testadmin1', password: adminPass, role: 'ADMIN', name: 'System Admin' }
+    { _id: '4', username: 'testadmin1', password: adminPass, role: 'ADMIN', name: 'System Admin' },
+    { _id: '5', username: 'testnurse1', password: nursePass, role: 'NURSE', name: 'Head Nurse Joy', assignedPatients: ['1', '2'] }
   ];
   console.log('In-memory database initialized with seed data.');
 };
@@ -62,13 +79,22 @@ initializeSeedData();
 // --- Auth Routes ---
 app.post('/api/register', async (req, res) => {
   try {
-    const { username, password, role, age, activeProtocol, targetMAP, baselineCO, baselineSV, riskScore, ward, deviceType, batteryLevel, signalQualityIndex } = req.body;
+    const { username, password, role, age, gender, primaryDiagnosis, activeProtocol, targetMAP, baselineCO, baselineSV, riskScore, ward, deviceType, batteryLevel, signalQualityIndex } = req.body;
     if (USERS.find(u => u.username === username)) return res.status(400).json({ error: 'Username already exists' });
     
     const hashedPassword = await bcrypt.hash(password, 10);
+    
+    let newPatientId = null;
+    if (role === 'PATIENT') {
+      const year = new Date().getFullYear();
+      const patientCount = USERS.filter(u => u.role === 'PATIENT').length + 1;
+      newPatientId = `CLA-${year}-${String(patientCount).padStart(5, '0')}`;
+    }
+
     const newUser = {
       _id: Date.now().toString(),
-      username, password: hashedPassword, role, age, 
+      patientId: newPatientId,
+      username, password: hashedPassword, role, age, gender, primaryDiagnosis,
       activeProtocol, targetMAP, baselineCO, baselineSV, riskScore,
       ward: ward || 'General Ward',
       deviceType: deviceType || 'Standard Monitor',
@@ -106,7 +132,17 @@ app.get('/api/users', (req, res) => {
 });
 
 app.get('/api/patients', (req, res) => {
-  const safePatients = USERS.filter(u => u.role === 'PATIENT').map(u => { const { password, ...rest } = u; return rest; });
+  let safePatients = USERS.filter(u => u.role === 'PATIENT').map(u => { const { password, ...rest } = u; return rest; });
+  
+  if (req.user && req.user.role === 'NURSE') {
+    const nurse = USERS.find(u => u._id === req.user.id);
+    if (nurse && nurse.assignedPatients) {
+      safePatients = safePatients.filter(p => nurse.assignedPatients.includes(p._id));
+    } else {
+      safePatients = []; // No assignments
+    }
+  }
+  
   res.json(safePatients);
 });
 
@@ -225,6 +261,175 @@ app.post('/api/v1/vitals/snapshot', async (req, res) => {
     res.status(200).json({ status: 'success', message: 'Vitals ingested and broadcasted' });
   } catch (error) {
     res.status(500).json({ error: 'Failed to ingest vitals' });
+  }
+});
+
+// --- EHR Management API ---
+app.post('/api/ehr/upload', upload.single('file'), async (req, res) => {
+  try {
+    const { patient_id, age, gender, name } = req.body;
+    if (!req.file) return res.status(400).json({ error: 'PDF file is required' });
+
+    // Ensure the patient record reflects that an EHR was uploaded (optional tracking)
+    const pt = USERS.find(u => u._id === patient_id || u.username === patient_id);
+    if (pt) {
+      pt.ehrFile = req.file.filename;
+    }
+
+    // Proxy the request to MedGemma
+    try {
+      const formData = new FormData();
+      formData.append('patient_id', patient_id);
+      if (age) formData.append('age', age);
+      if (gender) formData.append('gender', gender);
+      if (name) formData.append('name', name);
+      
+      // Node 18+ fetch FormData with File/Blob
+      const fileBuffer = fs.readFileSync(req.file.path);
+      const blob = new Blob([fileBuffer], { type: 'application/pdf' });
+      formData.append('file', blob, req.file.originalname);
+
+      // We extract API Key if sent by frontend
+      const apiKey = req.headers['x-api-key'] || 'dev-key-123';
+      const token = req.headers.authorization ? req.headers.authorization.split(' ')[1] : 'clinician_token';
+
+      const agentRes = await fetch('http://127.0.0.1:8000/api/v1/ehr/ingest', {
+        method: 'POST',
+        headers: {
+          'X-API-Key': apiKey,
+          'Authorization': `Bearer ${token}`
+        },
+        body: formData
+      });
+
+      if (!agentRes.ok) {
+        const errorText = await agentRes.text();
+        console.warn('MedGemma agent EHR ingest failed:', errorText);
+        return res.status(agentRes.status).json({ error: 'MedGemma processing failed', details: errorText });
+      }
+
+      const agentData = await agentRes.json();
+      
+      // Save file reference to patient if they exist
+      const pt = USERS.find(u => u._id === req.body.patient_id);
+      if (pt) {
+        pt.ehrFile = req.file.filename;
+      }
+      
+      res.json({ message: 'EHR Uploaded and indexed by AI successfully', agentData, filename: req.file.filename });
+
+    } catch (agentErr) {
+      console.warn('MedGemma unreachable for EHR proxy:', agentErr.message);
+      res.status(502).json({ error: 'Failed to contact MedGemma AI agent' });
+    }
+
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/ehr/download/:patientId', (req, res) => {
+  // Simple lookup, in reality query DB
+  const pt = USERS.find(u => u._id === req.params.patientId || u.username === req.params.patientId);
+  if (!pt || !pt.ehrFile) {
+    // If not found in memory, just check if any file starts with patientId
+    const files = fs.readdirSync(uploadDir);
+    const match = files.find(f => f.startsWith(`${req.params.patientId}_`));
+    if (match) {
+      return res.download(path.join(uploadDir, match));
+    }
+    return res.status(404).json({ error: 'No EHR document found for this patient' });
+  }
+  res.download(path.join(uploadDir, pt.ehrFile));
+});
+
+// --- ABG Management API ---
+app.post('/api/abg/upload', upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'PDF file is required' });
+
+    const formData = new FormData();
+    const fileBuffer = fs.readFileSync(req.file.path);
+    const blob = new Blob([fileBuffer], { type: 'application/pdf' });
+    formData.append('file', blob, req.file.originalname);
+
+    const apiKey = req.headers['x-api-key'] || 'dev-key-123';
+    const token = req.headers.authorization ? req.headers.authorization.split(' ')[1] : 'clinician_token';
+
+    const agentRes = await fetch('http://127.0.0.1:8000/api/v1/abg/upload', {
+      method: 'POST',
+      headers: {
+        'X-API-Key': apiKey,
+        'Authorization': `Bearer ${token}`
+      },
+      body: formData
+    });
+
+    if (!agentRes.ok) {
+      const errorText = await agentRes.text();
+      return res.status(agentRes.status).json({ error: 'ABG upload failed', details: errorText });
+    }
+
+    const agentData = await agentRes.json();
+    res.json(agentData);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/abg/analyze', async (req, res) => {
+  try {
+    const payload = req.body;
+    const apiKey = req.headers['x-api-key'] || 'dev-key-123';
+    const token = req.headers.authorization ? req.headers.authorization.split(' ')[1] : 'clinician_token';
+
+    const agentRes = await fetch('http://127.0.0.1:8000/api/v1/abg/analyze', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Key': apiKey,
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!agentRes.ok) {
+      const errorText = await agentRes.text();
+      return res.status(agentRes.status).json({ error: 'ABG analysis failed', details: errorText });
+    }
+
+    const agentData = await agentRes.json();
+    res.json(agentData);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/abg/history', async (req, res) => {
+  try {
+    const { patient_id } = req.query;
+    const apiKey = req.headers['x-api-key'] || 'dev-key-123';
+    const token = req.headers.authorization ? req.headers.authorization.split(' ')[1] : 'clinician_token';
+    
+    let url = 'http://127.0.0.1:8000/api/v1/abg/history';
+    if (patient_id) url += `?patient_id=${patient_id}`;
+
+    const agentRes = await fetch(url, {
+      headers: {
+        'X-API-Key': apiKey,
+        'Authorization': `Bearer ${token}`
+      }
+    });
+
+    if (!agentRes.ok) {
+      const errorText = await agentRes.text();
+      return res.status(agentRes.status).json({ error: 'Failed to fetch ABG history', details: errorText });
+    }
+
+    const agentData = await agentRes.json();
+    res.json(agentData);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 

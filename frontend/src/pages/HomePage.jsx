@@ -467,12 +467,12 @@ const HomePage = () => {
             <h5>Company</h5>
             <a href="#team" onClick={(e) => scrollToSection(e, '#team')}>Team</a>
             <a href="#contact" onClick={(e) => scrollToSection(e, '#contact')}>Contact</a>
-            <a href="#">Careers</a>
+            <a href="/">Careers</a>
           </div>
           <div className="footer-col">
             <h5>Connect</h5>
-            <a href="#">LinkedIn</a>
-            <a href="#">Twitter</a>
+            <a href="https://linkedin.com/company/cliniaura" target="_blank" rel="noreferrer">LinkedIn</a>
+            <a href="https://twitter.com/cliniaura" target="_blank" rel="noreferrer">Twitter</a>
             <a href="mailto:hello@clini-aura.com">hello@clini-aura.com</a>
           </div>
         </div>

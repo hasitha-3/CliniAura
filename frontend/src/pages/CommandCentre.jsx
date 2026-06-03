@@ -1,9 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import useWardStore from '../stores/wardStore';
 import io from 'socket.io-client';
-import { Activity, Bell, CheckCircle, HeartPulse, Stethoscope, AlertTriangle, Search, Battery, Wifi, Zap, Plus, Sliders, Layers, RefreshCw } from 'lucide-react';
+import { Activity, Bell, CheckCircle, HeartPulse, Stethoscope, AlertTriangle, Search, Battery, Wifi, Zap, Plus, Sliders, Layers, RefreshCw, FileText } from 'lucide-react';
 import { LineChart, Line, ResponsiveContainer, YAxis, Tooltip } from 'recharts';
 import { generateDummyPatients, generateDummyVitals, generateMedGemmaAlert } from '../utils/dummyDataSimulator';
+import EHRManager from '../components/EHRManager';
+import ABGManager from '../components/ABGManager';
+import CareSchedule from '../components/CareSchedule';
 
 const CommandCentre = () => {
   const { beds, getActiveAlerts, updateVitals, acknowledgeAlert } = useWardStore();
@@ -18,6 +21,9 @@ const CommandCentre = () => {
   
   // Interactive Action Feedback State (patientId -> message)
   const [actionFeedback, setActionFeedback] = useState({});
+  const [showEhrPtId, setShowEhrPtId] = useState(null);
+  const [showAbgPtId, setShowAbgPtId] = useState(null);
+  const [showSchedulePtId, setShowSchedulePtId] = useState(null);
 
   useEffect(() => {
     const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
@@ -361,16 +367,23 @@ const CommandCentre = () => {
                   >
                     {/* Top Identifiers */}
                     <div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                           <span style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--text)' }}>
-                            {pt.username}
+                            {pt.name || pt.username}
                           </span>
                           <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '4px', background: 'var(--surface2)', color: 'var(--text-dim)', border: '1px solid var(--border)' }}>
                             {pt.ward || 'General Ward'}
                           </span>
                         </div>
                         <span className={`badge-risk risk-${pt.riskScore}`}>{pt.riskScore}</span>
+                      </div>
+                      
+                      {/* Clinical Demographics */}
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '8px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                        <span style={{ background: 'rgba(255,255,255,0.05)', padding: '2px 6px', borderRadius: '4px' }}>{pt.patientId || 'ID Pending'}</span>
+                        <span style={{ background: 'rgba(255,255,255,0.05)', padding: '2px 6px', borderRadius: '4px' }}>{pt.age}y {pt.gender ? `/ ${pt.gender.charAt(0)}` : ''}</span>
+                        <span style={{ background: 'rgba(255,255,255,0.05)', padding: '2px 6px', borderRadius: '4px' }} className="truncate">{pt.primaryDiagnosis || 'Diagnosis Pending'}</span>
                       </div>
 
                       {/* Device Metadata Badges (SQI, Battery, Adapter) */}
@@ -521,6 +534,106 @@ const CommandCentre = () => {
                           >
                             <Zap size={12} /> Titrate
                           </button>
+                          
+                          <button
+                            onClick={() => setShowEhrPtId(showEhrPtId === pt._id ? null : pt._id)}
+                            style={{
+                              flex: 1,
+                              padding: '6px',
+                              background: 'var(--surface2)',
+                              border: '1px solid var(--border)',
+                              borderRadius: '6px',
+                              color: 'var(--text)',
+                              fontSize: '0.75rem',
+                              fontWeight: '500',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '4px',
+                              transition: 'all 0.2s'
+                            }}
+                            onMouseOver={e => { e.target.style.borderColor = 'var(--cyan)'; e.target.style.color = 'var(--cyan)'; }}
+                            onMouseOut={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.color = 'var(--text)'; }}
+                          >
+                            <FileText size={12} /> EHR
+                          </button>
+                          
+                          <button
+                            onClick={() => { setShowAbgPtId(showAbgPtId === pt._id ? null : pt._id); setShowEhrPtId(null); setShowSchedulePtId(null); }}
+                            style={{
+                              flex: 1,
+                              padding: '6px',
+                              background: 'var(--surface2)',
+                              border: '1px solid var(--border)',
+                              borderRadius: '6px',
+                              color: 'var(--text)',
+                              fontSize: '0.75rem',
+                              fontWeight: '500',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '4px',
+                              transition: 'all 0.2s'
+                            }}
+                            onMouseOver={e => { e.target.style.borderColor = 'var(--cyan)'; e.target.style.color = 'var(--cyan)'; }}
+                            onMouseOut={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.color = 'var(--text)'; }}
+                          >
+                            <Activity size={12} /> ABG
+                          </button>
+                          <button
+                            onClick={() => { setShowSchedulePtId(showSchedulePtId === pt._id ? null : pt._id); setShowAbgPtId(null); setShowEhrPtId(null); }}
+                            style={{
+                              flex: 1,
+                              padding: '6px',
+                              background: 'var(--surface2)',
+                              border: '1px solid var(--border)',
+                              borderRadius: '6px',
+                              color: 'var(--text)',
+                              fontSize: '0.75rem',
+                              fontWeight: '500',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '4px',
+                              transition: 'all 0.2s'
+                            }}
+                            onMouseOver={e => { e.target.style.borderColor = 'var(--cyan)'; e.target.style.color = 'var(--cyan)'; }}
+                            onMouseOut={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.color = 'var(--text)'; }}
+                          >
+                            <Stethoscope size={12} /> Schedule
+                          </button>
+                        </div>
+                      )}
+                      
+                      {showSchedulePtId === pt._id && (
+                        <div style={{ marginTop: '12px', animation: 'fade-up 0.2s ease' }}>
+                          <CareSchedule 
+                            patientId={pt._id} 
+                            patientName={pt.name || pt.username}
+                            role={JSON.parse(localStorage.getItem('cliniaura_user'))?.role}
+                          />
+                        </div>
+                      )}
+                      
+                      {showEhrPtId === pt._id && (
+                        <div style={{ marginTop: '12px', animation: 'fade-up 0.2s ease' }}>
+                          <EHRManager 
+                            patientId={pt._id} 
+                            patientName={pt.name || pt.username} 
+                            patientAge={pt.age}
+                          />
+                        </div>
+                      )}
+                      
+                      {showAbgPtId === pt._id && (
+                        <div style={{ marginTop: '12px', animation: 'fade-up 0.2s ease' }}>
+                          <ABGManager 
+                            patientId={pt._id} 
+                            patientName={pt.name || pt.username}
+                          />
                         </div>
                       )}
                     </div>
