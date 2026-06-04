@@ -32,6 +32,45 @@ const profiles = {
     fall_detected: false,
     noise: { sbp: 4, dbp: 3, hr: 4, spo2: 1, rr: 2 },
     trend: { sbp: -0.2, dbp: -0.1, hr: 0.5, spo2: -0.1, rr: 0.1 } // Drift applied per tick
+  },
+  // Patient 3
+  pneumonia_recovery: {
+    patient_id: 'dummy-patient-3',
+    systolic_bp: 130,
+    diastolic_bp: 85,
+    heart_rate: 92,
+    spo2: 96,
+    respiration_rate: 22,
+    steps: 100,
+    posture: 'Sitting',
+    fall_detected: false,
+    noise: { sbp: 2, dbp: 2, hr: 2, spo2: 1, rr: 1 }
+  },
+  // Patient 4
+  renal_failure: {
+    patient_id: 'dummy-patient-4',
+    systolic_bp: 145,
+    diastolic_bp: 95,
+    heart_rate: 88,
+    spo2: 98,
+    respiration_rate: 16,
+    steps: 50,
+    posture: 'Laying',
+    fall_detected: false,
+    noise: { sbp: 5, dbp: 4, hr: 3, spo2: 1, rr: 1 }
+  },
+  // Patient 5
+  post_op: {
+    patient_id: '6',
+    systolic_bp: 118,
+    diastolic_bp: 75,
+    heart_rate: 70,
+    spo2: 99,
+    respiration_rate: 12,
+    steps: 300,
+    posture: 'Upright',
+    fall_detected: false,
+    noise: { sbp: 2, dbp: 2, hr: 2, spo2: 1, rr: 1 }
   }
 };
 
@@ -107,4 +146,7 @@ console.log('----------------------------------------------------');
 setInterval(() => {
   sendVitals('stable');       // Patient 1
   sendVitals('deteriorating'); // Patient 2
+  sendVitals('pneumonia_recovery'); // Patient 3
+  sendVitals('renal_failure'); // Patient 4
+  sendVitals('post_op'); // Patient 5
 }, 1500);

@@ -69,7 +69,7 @@ const AuditDashboard = () => {
   });
 
   return (
-    <div className="dashboard-container" style={{ padding: '24px 40px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+    <div className="dashboard-container" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       
       {/* Title & Actions Bar */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>

@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import useWardStore from '../stores/wardStore';
 import io from 'socket.io-client';
-import { Activity, Bell, CheckCircle, HeartPulse, Stethoscope, AlertTriangle, Search, Battery, Wifi, Zap, Plus, Sliders, Layers, RefreshCw, FileText } from 'lucide-react';
+import { Activity, Bell, CheckCircle, HeartPulse, Stethoscope, AlertTriangle, Search, Battery, Wifi, Zap, Plus, Sliders, Layers, RefreshCw, FileText, Users, X } from 'lucide-react';
 import { LineChart, Line, ResponsiveContainer, YAxis, Tooltip } from 'recharts';
 import { generateDummyPatients, generateDummyVitals, generateMedGemmaAlert } from '../utils/dummyDataSimulator';
 import EHRManager from '../components/EHRManager';
 import ABGManager from '../components/ABGManager';
 import CareSchedule from '../components/CareSchedule';
+import PatientCalls from '../components/PatientCalls';
 
 const CommandCentre = () => {
   const { beds, getActiveAlerts, updateVitals, acknowledgeAlert } = useWardStore();
@@ -15,19 +16,19 @@ const CommandCentre = () => {
   const [error, setError] = useState(null);
 
   // Advanced Filtering & Search States
-  const [selectedWard, setSelectedWard] = useState('All');
-  const [selectedRisk, setSelectedRisk] = useState('All');
+  const [selectedWard, setSelectedWard] = useState('ALL');
+  const [selectedRisk, setSelectedRisk] = useState('ALL');
   const [searchTerm, setSearchTerm] = useState('');
   
   // Interactive Action Feedback State (patientId -> message)
   const [actionFeedback, setActionFeedback] = useState({});
-  const [showEhrPtId, setShowEhrPtId] = useState(null);
-  const [showAbgPtId, setShowAbgPtId] = useState(null);
-  const [showSchedulePtId, setShowSchedulePtId] = useState(null);
+  const [managePtId, setManagePtId] = useState(null);
+  const [activeTab, setActiveTab] = useState('SCHEDULE'); // SCHEDULE, EHR, ABG
+  const user = JSON.parse(localStorage.getItem('cliniaura_user'));
 
   useEffect(() => {
     const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
-    const token = JSON.parse(localStorage.getItem('cliniaura_user'))?.token;
+    const token = user?.token;
 
     // Fetch authorized patient listings
     fetch(`${API_URL}/api/patients`, {
@@ -64,12 +65,10 @@ const CommandCentre = () => {
           });
         }, 2500);
         
-        // Save interval ID to clear it later
         window.dummyIntervalId = intervalId;
       });
 
-    const role = JSON.parse(localStorage.getItem('cliniaura_user'))?.role;
-    const socket = io(API_URL, { auth: { token, role } });
+    const socket = io(API_URL, { auth: { token, role: user?.role } });
     
     socket.on('vitals_update', (data) => {
       if (data?.vitals) {
@@ -85,18 +84,6 @@ const CommandCentre = () => {
       updateVitals(data.patientId, null, `ESCALATION: ${data.message}`);
     });
 
-    // Automatically trigger monitoring for all loaded patients to keep telemetry live
-    fetch(`${API_URL}/api/patients`, {
-      headers: { 'Authorization': `Bearer ${token || ''}` }
-    })
-      .then(r => r.ok ? r.json() : [])
-      .then(pts => {
-        if (Array.isArray(pts)) {
-          pts.forEach(p => socket.emit('start_monitoring', p._id));
-        }
-      })
-      .catch(() => {});
-
     return () => {
       socket.close();
       if (window.dummyIntervalId) {
@@ -107,7 +94,6 @@ const CommandCentre = () => {
 
   const activeAlerts = getActiveAlerts();
 
-  // Handle local stateful intervention logging
   const logIntervention = (patientId, actionName) => {
     setActionFeedback(prev => ({ ...prev, [patientId]: `${actionName} Logged` }));
     setTimeout(() => {
@@ -119,22 +105,30 @@ const CommandCentre = () => {
     }, 3500);
   };
 
-  // Filter patients based on selected ward, risk, and search queries
+  const [showMyPatientsOnly, setShowMyPatientsOnly] = useState(false);
+
   const filteredPatients = patients.filter(pt => {
-    const matchesWard = selectedWard === 'All' || pt.ward === selectedWard;
-    const matchesRisk = selectedRisk === 'All' || pt.riskScore === selectedRisk;
+    const matchesWard = selectedWard === 'ALL' || pt.ward === selectedWard;
+    const matchesRisk = selectedRisk === 'ALL' || pt.riskScore === selectedRisk;
     const matchesSearch = !searchTerm || 
       pt.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (pt.activeProtocol && pt.activeProtocol.toLowerCase().includes(searchTerm.toLowerCase()));
-    return matchesWard && matchesRisk && matchesSearch;
+      
+    const currentUserUsername = user?.username;
+    const currentUserRole = user?.role;
+    
+    const isMyPatientsView = showMyPatientsOnly || currentUserRole === 'NURSE';
+    const matchesMyPatients = !isMyPatientsView || pt.assignedNurse === currentUserUsername || pt.assignedDoctor === currentUserUsername;
+    
+    return matchesWard && matchesRisk && matchesSearch && matchesMyPatients;
   });
 
-  const wards = ['All', 'Intensive Care', 'Step-Down Unit', 'General Ward'];
-  const risks = ['All', 'Critical', 'High', 'Moderate', 'Low'];
+  const wards = ['All', 'ICU', 'Step-down Unit', 'General Ward'];
+  const risks = ['All', 'Critical', 'High', 'Medium', 'Moderate', 'Low'];
 
   if (loading) {
     return (
-      <div className="dashboard-container" style={{ textAlign: 'center', padding: '100px', color: 'var(--text-dim)' }}>
+      <div className="dashboard-container" style={{ textAlign: 'center', color: 'var(--text-dim)' }}>
         <RefreshCw size={32} className="animate-spin" style={{ animation: 'spin 1.5s linear infinite', margin: '0 auto 16px', color: 'var(--teal)' }} />
         <h3>Initializing Edge Stream...</h3>
         <p>Connecting to distributed biosensor clusters</p>
@@ -143,12 +137,8 @@ const CommandCentre = () => {
   }
 
   return (
-    <div className="dashboard-container" style={{ padding: '24px 32px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      
-      {/* Advanced Control Bar */}
+    <div className="dashboard-container" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       <div className="glass-panel" style={{ padding: '16px 24px', display: 'flex', flexWrap: 'wrap', gap: '20px', alignItems: 'center', justifyContent: 'space-between' }}>
-        
-        {/* Ward Quick Selector */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
             <Layers size={14} /> Ward:
@@ -176,7 +166,6 @@ const CommandCentre = () => {
           </div>
         </div>
 
-        {/* Risk Filter Dropdown */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
             <Sliders size={14} /> HPI Tier:
@@ -200,7 +189,28 @@ const CommandCentre = () => {
           </select>
         </div>
 
-        {/* Dynamic Search Box */}
+          {user?.role !== 'NURSE' && (
+            <button
+              onClick={() => setShowMyPatientsOnly(!showMyPatientsOnly)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 14px',
+                borderRadius: '100px',
+                border: `1px solid ${showMyPatientsOnly ? 'var(--teal)' : 'var(--border)'}`,
+                background: showMyPatientsOnly ? 'rgba(0, 212, 170, 0.15)' : 'var(--bg2)',
+                color: showMyPatientsOnly ? 'var(--teal)' : 'var(--text-muted)',
+                fontSize: '0.8rem',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+            >
+              <Users size={14} /> My Patients
+            </button>
+          )}
+
         <div style={{ position: 'relative', flex: '1 1 250px', maxWidth: '350px' }}>
           <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
           <input
@@ -229,7 +239,6 @@ const CommandCentre = () => {
             </button>
           )}
         </div>
-
       </div>
 
       {error && (
@@ -239,75 +248,33 @@ const CommandCentre = () => {
         </div>
       )}
 
-      {/* Main Grid View Area */}
-      <div style={{ display: 'flex', gap: '24px', flex: 1, alignItems: 'stretch' }}>
-        
-        {/* Active Alerts Escalation Desk (Left Sidebar) */}
-        <div className="glass-panel" style={{ width: '320px', display: 'flex', flexDirection: 'column', padding: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', borderBottom: '1px solid var(--border)', paddingBottom: '12px' }}>
-            <h3 style={{ fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '8px', color: '#ff4d6a', margin: 0 }}>
-              <Bell size={18} /> Escalation Desk
-            </h3>
-            <span style={{ background: 'rgba(255,77,106,0.15)', color: '#ff4d6a', padding: '2px 8px', borderRadius: '100px', fontSize: '0.75rem', fontWeight: 'bold' }}>
-              {activeAlerts.length}
-            </span>
-          </div>
-
-          <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px', paddingRight: '4px' }}>
-            {activeAlerts.map(alert => {
-              const pt = patients.find(p => p._id === alert.patientId);
-              return (
-                <div key={alert.id} style={{ 
-                  background: 'rgba(255, 77, 106, 0.06)', 
-                  border: '1px solid rgba(255, 77, 106, 0.3)', 
-                  padding: '12px', 
-                  borderRadius: '12px',
-                  animation: 'fade-up 0.3s ease'
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                    <strong style={{ fontSize: '0.95rem', color: 'var(--text)' }}>{pt?.username || 'Biosensor Anchor'}</strong>
-                    {pt && <span className={`badge-risk risk-${pt.riskScore}`}>{pt.riskScore}</span>}
+      <div style={{ display: 'flex', gap: '24px', alignItems: 'flex-start' }}>
+        <div style={{ width: '30%', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          <PatientCalls role={user?.role} username={user?.username} />
+          <div className="glass-panel" style={{ padding: '16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ margin: 0, color: '#ff4d6a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <AlertTriangle size={18} /> Escalation Desk
+              </h3>
+              <span style={{ background: 'rgba(255,77,106,0.15)', color: '#ff4d6a', padding: '2px 8px', borderRadius: '100px', fontSize: '0.75rem', fontWeight: 'bold' }}>
+                {activeAlerts.length}
+              </span>
+            </div>
+            <div style={{ maxHeight: '400px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {activeAlerts.map(alert => {
+                const pt = patients.find(p => p._id === alert.patientId);
+                return (
+                  <div key={alert.id} style={{ background: 'rgba(255, 77, 106, 0.06)', border: '1px solid rgba(255, 77, 106, 0.3)', padding: '12px', borderRadius: '12px' }}>
+                    <div style={{ fontSize: '0.9rem', fontWeight: 'bold' }}>{pt?.username || 'Unknown'}</div>
+                    <div style={{ fontSize: '0.8rem', color: '#ff8093' }}>{alert.message}</div>
+                    <button onClick={() => acknowledgeAlert(alert.id)} style={{ marginTop: '8px', width: '100%', fontSize: '0.75rem', background: '#ff4d6a', color: 'white', border: 'none', padding: '4px', borderRadius: '4px', cursor: 'pointer' }}>Acknowledge</button>
                   </div>
-                  <div style={{ fontSize: '0.8rem', color: '#ff8093', marginBottom: '10px', lineHeight: 1.4 }}>{alert.message}</div>
-                  
-                  <button 
-                    onClick={() => acknowledgeAlert(alert.id)}
-                    style={{ 
-                      width: '100%', 
-                      padding: '6px', 
-                      borderRadius: '6px', 
-                      border: 'none', 
-                      background: '#ff4d6a', 
-                      color: 'white', 
-                      fontWeight: '600', 
-                      fontSize: '0.8rem',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '6px',
-                      transition: 'background 0.2s'
-                    }}
-                    onMouseOver={e => e.target.style.background = '#e03c58'}
-                    onMouseOut={e => e.target.style.background = '#ff4d6a'}
-                  >
-                    <CheckCircle size={14} /> Acknowledge Stream Alert
-                  </button>
-                </div>
-              );
-            })}
-
-            {activeAlerts.length === 0 && (
-              <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px 10px', margin: 'auto 0' }}>
-                <CheckCircle size={36} style={{ color: 'var(--teal)', opacity: 0.6, marginBottom: '10px' }} />
-                <div style={{ fontSize: '0.95rem', fontWeight: '500', color: 'var(--text-dim)' }}>Zero Unacknowledged Alerts</div>
-                <div style={{ fontSize: '0.75rem', marginTop: '4px' }}>All multi-patient telemetry signals operational within nominal clinical limits.</div>
-              </div>
-            )}
+                );
+              })}
+            </div>
           </div>
         </div>
 
-        {/* Multi-Patient Bed Map Cards */}
         <div style={{ flex: 1, overflowY: 'auto', paddingRight: '6px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
             <div style={{ fontSize: '0.85rem', color: 'var(--text-dim)' }}>
@@ -383,7 +350,15 @@ const CommandCentre = () => {
                       <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '8px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                         <span style={{ background: 'rgba(255,255,255,0.05)', padding: '2px 6px', borderRadius: '4px' }}>{pt.patientId || 'ID Pending'}</span>
                         <span style={{ background: 'rgba(255,255,255,0.05)', padding: '2px 6px', borderRadius: '4px' }}>{pt.age}y {pt.gender ? `/ ${pt.gender.charAt(0)}` : ''}</span>
+                        <span style={{ background: 'rgba(0, 212, 170, 0.1)', color: 'var(--teal)', padding: '2px 6px', borderRadius: '4px' }}>{pt.ward || 'Pending Ward'}</span>
                         <span style={{ background: 'rgba(255,255,255,0.05)', padding: '2px 6px', borderRadius: '4px' }} className="truncate">{pt.primaryDiagnosis || 'Diagnosis Pending'}</span>
+                      </div>
+
+                      <div style={{ fontSize: '0.70rem', color: 'var(--text-muted)', marginBottom: '12px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', background: 'var(--bg2)', padding: '8px', borderRadius: '6px' }}>
+                        <div><strong>Admitted:</strong> {pt.admissionDate ? new Date(pt.admissionDate).toLocaleString() : '--'}</div>
+                        <div><strong>Diagnosed:</strong> {pt.diagnosisDate ? new Date(pt.diagnosisDate).toLocaleString() : '--'}</div>
+                        <div><strong>Nurse:</strong> {pt.assignedNurse || 'Unassigned'}</div>
+                        <div><strong>Doctor:</strong> {pt.assignedDoctor || 'Unassigned'}</div>
                       </div>
 
                       {/* Device Metadata Badges (SQI, Battery, Adapter) */}
@@ -481,161 +456,27 @@ const CommandCentre = () => {
 
                     {/* Action Drawers / State Logging Buttons */}
                     <div style={{ borderTop: '1px solid var(--border)', paddingTop: '12px', marginTop: 'auto' }}>
-                      {feedback ? (
-                        <div style={{ padding: '6px', background: 'rgba(0,212,170,0.1)', color: 'var(--teal)', textAlign: 'center', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 'bold', animation: 'fade-up 0.2s ease' }}>
-                          ✓ {feedback}
-                        </div>
-                      ) : (
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                          <button
-                            onClick={() => logIntervention(pt._id, 'Fluid Bolus')}
-                            style={{
-                              flex: 1,
-                              padding: '6px',
-                              background: 'var(--surface2)',
-                              border: '1px solid var(--border)',
-                              borderRadius: '6px',
-                              color: 'var(--text)',
-                              fontSize: '0.75rem',
-                              fontWeight: '500',
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              gap: '4px',
-                              transition: 'all 0.2s'
-                            }}
-                            onMouseOver={e => { e.target.style.borderColor = 'var(--teal)'; e.target.style.color = 'var(--teal)'; }}
-                            onMouseOut={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.color = 'var(--text)'; }}
-                          >
-                            <Plus size={12} /> Bolus
-                          </button>
-                          
-                          <button
-                            onClick={() => logIntervention(pt._id, 'Vasopressor Titration')}
-                            style={{
-                              flex: 1,
-                              padding: '6px',
-                              background: 'var(--surface2)',
-                              border: '1px solid var(--border)',
-                              borderRadius: '6px',
-                              color: 'var(--text)',
-                              fontSize: '0.75rem',
-                              fontWeight: '500',
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              gap: '4px',
-                              transition: 'all 0.2s'
-                            }}
-                            onMouseOver={e => { e.target.style.borderColor = 'var(--cyan)'; e.target.style.color = 'var(--cyan)'; }}
-                            onMouseOut={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.color = 'var(--text)'; }}
-                          >
-                            <Zap size={12} /> Titrate
-                          </button>
-                          
-                          <button
-                            onClick={() => setShowEhrPtId(showEhrPtId === pt._id ? null : pt._id)}
-                            style={{
-                              flex: 1,
-                              padding: '6px',
-                              background: 'var(--surface2)',
-                              border: '1px solid var(--border)',
-                              borderRadius: '6px',
-                              color: 'var(--text)',
-                              fontSize: '0.75rem',
-                              fontWeight: '500',
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              gap: '4px',
-                              transition: 'all 0.2s'
-                            }}
-                            onMouseOver={e => { e.target.style.borderColor = 'var(--cyan)'; e.target.style.color = 'var(--cyan)'; }}
-                            onMouseOut={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.color = 'var(--text)'; }}
-                          >
-                            <FileText size={12} /> EHR
-                          </button>
-                          
-                          <button
-                            onClick={() => { setShowAbgPtId(showAbgPtId === pt._id ? null : pt._id); setShowEhrPtId(null); setShowSchedulePtId(null); }}
-                            style={{
-                              flex: 1,
-                              padding: '6px',
-                              background: 'var(--surface2)',
-                              border: '1px solid var(--border)',
-                              borderRadius: '6px',
-                              color: 'var(--text)',
-                              fontSize: '0.75rem',
-                              fontWeight: '500',
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              gap: '4px',
-                              transition: 'all 0.2s'
-                            }}
-                            onMouseOver={e => { e.target.style.borderColor = 'var(--cyan)'; e.target.style.color = 'var(--cyan)'; }}
-                            onMouseOut={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.color = 'var(--text)'; }}
-                          >
-                            <Activity size={12} /> ABG
-                          </button>
-                          <button
-                            onClick={() => { setShowSchedulePtId(showSchedulePtId === pt._id ? null : pt._id); setShowAbgPtId(null); setShowEhrPtId(null); }}
-                            style={{
-                              flex: 1,
-                              padding: '6px',
-                              background: 'var(--surface2)',
-                              border: '1px solid var(--border)',
-                              borderRadius: '6px',
-                              color: 'var(--text)',
-                              fontSize: '0.75rem',
-                              fontWeight: '500',
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              gap: '4px',
-                              transition: 'all 0.2s'
-                            }}
-                            onMouseOver={e => { e.target.style.borderColor = 'var(--cyan)'; e.target.style.color = 'var(--cyan)'; }}
-                            onMouseOut={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.color = 'var(--text)'; }}
-                          >
-                            <Stethoscope size={12} /> Schedule
-                          </button>
-                        </div>
-                      )}
-                      
-                      {showSchedulePtId === pt._id && (
-                        <div style={{ marginTop: '12px', animation: 'fade-up 0.2s ease' }}>
-                          <CareSchedule 
-                            patientId={pt._id} 
-                            patientName={pt.name || pt.username}
-                            role={JSON.parse(localStorage.getItem('cliniaura_user'))?.role}
-                          />
-                        </div>
-                      )}
-                      
-                      {showEhrPtId === pt._id && (
-                        <div style={{ marginTop: '12px', animation: 'fade-up 0.2s ease' }}>
-                          <EHRManager 
-                            patientId={pt._id} 
-                            patientName={pt.name || pt.username} 
-                            patientAge={pt.age}
-                          />
-                        </div>
-                      )}
-                      
-                      {showAbgPtId === pt._id && (
-                        <div style={{ marginTop: '12px', animation: 'fade-up 0.2s ease' }}>
-                          <ABGManager 
-                            patientId={pt._id} 
-                            patientName={pt.name || pt.username}
-                          />
-                        </div>
-                      )}
+                      <button
+                        onClick={() => setManagePtId(pt._id)}
+                        style={{
+                          width: '100%',
+                          padding: '10px',
+                          background: 'var(--teal)',
+                          border: 'none',
+                          borderRadius: '6px',
+                          color: 'var(--bg)',
+                          fontSize: '0.85rem',
+                          fontWeight: 'bold',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '6px',
+                          transition: 'all 0.2s'
+                        }}
+                      >
+                        <Sliders size={14} /> Manage Patient
+                      </button>
                     </div>
 
                   </div>
@@ -647,6 +488,77 @@ const CommandCentre = () => {
 
       </div>
 
+      {/* Full-Screen Modals for Managing Patient */}
+      {managePtId && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(5, 10, 16, 0.95)', zIndex: 1000, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '40px', backdropFilter: 'blur(4px)' }}>
+          <div className="glass-panel" style={{ width: '100%', maxWidth: '1000px', maxHeight: '90vh', overflowY: 'auto', background: 'var(--bg2)', padding: '40px', position: 'relative', border: '1px solid var(--teal)', boxShadow: '0 20px 40px rgba(0,0,0,0.5)' }}>
+            <button 
+              onClick={() => { setManagePtId(null); setActiveTab('SCHEDULE'); }} 
+              style={{ position: 'absolute', top: '20px', right: '20px', background: 'var(--teal)', color: 'var(--bg)', border: 'none', borderRadius: '50%', width: '36px', height: '36px', cursor: 'pointer', fontWeight: 'bold', fontSize: '1.2rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              &times;
+            </button>
+            <div style={{ animation: 'fade-up 0.3s ease' }}>
+              {(() => {
+                const pt = patients.find(p => p._id === managePtId) || {};
+                const feedback = actionFeedback[pt._id];
+                
+                return (
+                  <>
+                    <h2 style={{ color: 'var(--teal)', marginBottom: '10px', marginTop: 0, fontSize: '1.8rem' }}>
+                      Manage Patient - {pt.name || pt.username}
+                    </h2>
+                    
+                    {/* Quick Interventions */}
+                    <div style={{ display: 'flex', gap: '12px', marginBottom: '24px', paddingBottom: '20px', borderBottom: '1px solid var(--border)' }}>
+                      <button onClick={() => logIntervention(pt._id, 'Fluid Bolus')} className="btn" style={{ flex: 1, padding: '12px', background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text)', fontWeight: 'bold' }}>
+                        <Plus size={16} style={{display:'inline', marginRight:'8px'}} /> Administer Fluid Bolus
+                      </button>
+                      <button onClick={() => logIntervention(pt._id, 'Vasopressor Titration')} className="btn" style={{ flex: 1, padding: '12px', background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text)', fontWeight: 'bold' }}>
+                        <Zap size={16} style={{display:'inline', marginRight:'8px'}} /> Titrate Vasopressors
+                      </button>
+                      {feedback && (
+                        <div style={{ flex: 1, padding: '12px', background: 'rgba(0,212,170,0.1)', color: 'var(--teal)', textAlign: 'center', borderRadius: '8px', fontWeight: 'bold', animation: 'fade-up 0.2s ease' }}>
+                          ✓ {feedback}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Tabs */}
+                    <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
+                      <button onClick={() => setActiveTab('SCHEDULE')} style={{ padding: '8px 16px', borderRadius: '100px', border: 'none', background: activeTab === 'SCHEDULE' ? 'var(--teal)' : 'var(--surface2)', color: activeTab === 'SCHEDULE' ? 'var(--bg)' : 'var(--text)', fontWeight: 'bold', cursor: 'pointer' }}>Care Schedule</button>
+                      <button onClick={() => setActiveTab('EHR')} style={{ padding: '8px 16px', borderRadius: '100px', border: 'none', background: activeTab === 'EHR' ? 'var(--cyan)' : 'var(--surface2)', color: activeTab === 'EHR' ? 'var(--bg)' : 'var(--text)', fontWeight: 'bold', cursor: 'pointer' }}>EHR Documents</button>
+                      <button onClick={() => setActiveTab('ABG')} style={{ padding: '8px 16px', borderRadius: '100px', border: 'none', background: activeTab === 'ABG' ? '#38bdf8' : 'var(--surface2)', color: activeTab === 'ABG' ? 'var(--bg)' : 'var(--text)', fontWeight: 'bold', cursor: 'pointer' }}>ABG Lab Results</button>
+                    </div>
+                    
+                    {activeTab === 'SCHEDULE' && (
+                      <CareSchedule 
+                        patientId={pt._id} 
+                        patientName={pt.name || pt.username}
+                        role={user?.role}
+                      />
+                    )}
+                    
+                    {activeTab === 'EHR' && (
+                      <EHRManager 
+                        patientId={pt._id} 
+                        patientName={pt.name || pt.username} 
+                        patientAge={pt.age}
+                      />
+                    )}
+                    
+                    {activeTab === 'ABG' && (
+                      <ABGManager 
+                        patientId={pt._id} 
+                        patientName={pt.name || pt.username}
+                      />
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

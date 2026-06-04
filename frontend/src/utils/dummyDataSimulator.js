@@ -104,8 +104,8 @@ export const generateDummyVitals = (patientId, previousVitals = null) => {
     };
   }
 
-  const isCritical = patientId === "dummy-patient-1";
-  const isHigh = patientId === "dummy-patient-2";
+  const isCritical = patientId === "dummy-patient-1" || patientId === "1";
+  const isHigh = patientId === "dummy-patient-2" || patientId === "2";
   
   let hr, spO2, sys, dia, rr;
 

@@ -60,17 +60,34 @@ const initializeSeedData = () => {
   USERS = [
     {
       _id: '1', patientId: 'CLA-2026-00001', username: 'testpatient1', password: patientPass, role: 'PATIENT', name: 'Arjun Mehta', email: 'testpatient1@cliniaura.test', age: 45, gender: 'Male', primaryDiagnosis: 'Sepsis',
-      riskScore: 'Moderate', activeProtocol: 'Sepsis Resuscitation Bundles', targetMAP: 65, baselineCO: 4.5, baselineSV: 60,
-      ward: 'ICU', deviceType: 'VitalPatch', batteryLevel: 95, signalQualityIndex: 98, auditLogs: []
+      riskScore: 'Critical', activeProtocol: 'Sepsis Resuscitation Bundles', targetMAP: 65, baselineCO: 4.5, baselineSV: 60,
+      ward: 'ICU', assignedNurse: 'testnurse1', assignedDoctor: 'testdoctor1', admissionDate: '2026-06-01T08:30:00Z', diagnosisDate: '2026-06-02T10:15:00Z', deviceType: 'VitalPatch', batteryLevel: 95, signalQualityIndex: 98, auditLogs: []
     },
     {
       _id: '2', patientId: 'CLA-2026-00002', username: 'testpatient2', password: patientPass, role: 'PATIENT', name: 'Priya Nair', email: 'testpatient2@cliniaura.test', age: 62, gender: 'Female', primaryDiagnosis: 'Heart Failure',
       riskScore: 'High', activeProtocol: 'Cardiac Output Optimization', targetMAP: 70, baselineCO: 4.0, baselineSV: 55,
-      ward: 'ICU', deviceType: 'VitalPatch', batteryLevel: 80, signalQualityIndex: 90, auditLogs: []
+      ward: 'Step-down Unit', assignedNurse: 'testnurse1', assignedDoctor: 'testdoctor1', admissionDate: '2026-06-03T14:20:00Z', diagnosisDate: '2026-06-03T15:00:00Z', deviceType: 'VitalPatch', batteryLevel: 80, signalQualityIndex: 90, auditLogs: []
     },
-    { _id: '3', username: 'testdoctor1', password: doctorPass, role: 'DOCTOR', name: 'Dr. Sarah Chen' },
+    {
+      _id: 'dummy-patient-3', patientId: 'CLA-2026-00003', username: 'RJones_G11', password: patientPass, role: 'PATIENT', name: 'Rajesh Jones', email: 'rjones@cliniaura.test', age: 55, gender: 'Male', primaryDiagnosis: 'Pneumonia',
+      riskScore: 'Moderate', activeProtocol: 'Respiratory Support', targetMAP: 70, baselineCO: 5.0, baselineSV: 70,
+      ward: 'General Ward', assignedNurse: 'testnurse2', assignedDoctor: 'testdoctor2', admissionDate: '2026-06-04T09:10:00Z', diagnosisDate: '2026-06-04T11:45:00Z', deviceType: 'Standard Monitor', batteryLevel: 100, signalQualityIndex: 100, auditLogs: []
+    },
+    {
+      _id: 'dummy-patient-4', patientId: 'CLA-2026-00004', username: 'MWilliams_W2', password: patientPass, role: 'PATIENT', name: 'Maria Williams', email: 'mwilliams@cliniaura.test', age: 71, gender: 'Female', primaryDiagnosis: 'Renal Failure',
+      riskScore: 'Medium', activeProtocol: 'Fluid Resuscitation', targetMAP: 75, baselineCO: 4.2, baselineSV: 58,
+      ward: 'ICU', assignedNurse: 'testnurse2', assignedDoctor: 'testdoctor1', admissionDate: '2026-06-02T18:00:00Z', diagnosisDate: '2026-06-03T09:30:00Z', deviceType: 'VitalPatch', batteryLevel: 65, signalQualityIndex: 85, auditLogs: []
+    },
+    {
+      _id: '6', patientId: 'CLA-2026-00005', username: 'ASmith_S4', password: patientPass, role: 'PATIENT', name: 'Alex Smith', email: 'asmith@cliniaura.test', age: 29, gender: 'Male', primaryDiagnosis: 'Post-op Recovery',
+      riskScore: 'Low', activeProtocol: 'Standard Observation', targetMAP: 80, baselineCO: 5.5, baselineSV: 75,
+      ward: 'General Ward', assignedNurse: 'testnurse1', assignedDoctor: 'testdoctor2', admissionDate: '2026-06-04T07:00:00Z', diagnosisDate: '2026-06-04T08:00:00Z', deviceType: 'Basic Telemetry', batteryLevel: 90, signalQualityIndex: 99, auditLogs: []
+    },
+    { _id: '3', username: 'testdoctor1', password: doctorPass, role: 'DOCTOR', name: 'Dr. Sarah Chen', specialty: 'Cardiology', shift: 'Morning' },
+    { _id: '7', username: 'testdoctor2', password: doctorPass, role: 'DOCTOR', name: 'Dr. Marcus Webb', specialty: 'Pulmonology', shift: 'Night' },
     { _id: '4', username: 'testadmin1', password: adminPass, role: 'ADMIN', name: 'System Admin' },
-    { _id: '5', username: 'testnurse1', password: nursePass, role: 'NURSE', name: 'Head Nurse Joy', assignedPatients: ['1', '2'] }
+    { _id: '5', username: 'testnurse1', password: nursePass, role: 'NURSE', name: 'Nurse Joy', shift: 'Morning' },
+    { _id: '8', username: 'testnurse2', password: nursePass, role: 'NURSE', name: 'Nurse David', shift: 'Night' }
   ];
   console.log('In-memory database initialized with seed data.');
 };
@@ -131,15 +148,29 @@ app.get('/api/users', (req, res) => {
   res.json(safeUsers);
 });
 
+app.put('/api/patients/:id/assign', (req, res) => {
+  const patientId = req.params.id;
+  const { assignedDoctor, assignedNurse } = req.body;
+  
+  const patientIndex = USERS.findIndex(u => u._id === patientId && u.role === 'PATIENT');
+  if (patientIndex !== -1) {
+    if (assignedDoctor !== undefined) USERS[patientIndex].assignedDoctor = assignedDoctor;
+    if (assignedNurse !== undefined) USERS[patientIndex].assignedNurse = assignedNurse;
+    res.json({ success: true, patient: USERS[patientIndex] });
+  } else {
+    res.status(404).json({ error: 'Patient not found' });
+  }
+});
+
 app.get('/api/patients', (req, res) => {
   let safePatients = USERS.filter(u => u.role === 'PATIENT').map(u => { const { password, ...rest } = u; return rest; });
   
   if (req.user && req.user.role === 'NURSE') {
     const nurse = USERS.find(u => u._id === req.user.id);
-    if (nurse && nurse.assignedPatients) {
-      safePatients = safePatients.filter(p => nurse.assignedPatients.includes(p._id));
+    if (nurse) {
+      safePatients = safePatients.filter(p => p.assignedNurse === nurse.username);
     } else {
-      safePatients = []; // No assignments
+      safePatients = []; // Unknown nurse
     }
   }
   
@@ -251,11 +282,27 @@ app.post('/api/v1/vitals/snapshot', async (req, res) => {
         // Fire alerts for HIGH and CRITICAL
         if (agentResponse.alert_level === 'CRITICAL' || agentResponse.alert_level === 'HIGH') {
            const alertMsg = agentResponse.reasoning_summary || `MedGemma Alert: ${agentResponse.alert_level} Risk detected`;
-           io.to('DOCTOR').to('ADMIN').emit('alarm:new', { patientId: vitals.patientId, message: alertMsg, level: agentResponse.alert_level });
+           io.to('DOCTOR').to('ADMIN').to('NURSE').emit('alarm:new', { patientId: vitals.patientId, message: alertMsg, level: agentResponse.alert_level });
         }
       }
     } catch (agentErr) {
-      console.warn('MedGemma agent unreachable, skipping AI analysis.', agentErr.message);
+      console.warn('MedGemma agent unreachable, skipping AI analysis. Falling back to rule-based escalation.', agentErr.message);
+      
+      let level = null;
+      let reason = '';
+      
+      // Fallback Rule-based alerting
+      if (vitals.bloodPressureSys < 90 || vitals.heartRate > 120 || vitals.spO2 < 92) {
+        level = 'CRITICAL';
+        reason = 'Rule-based: Critical vitals detected (Low BP/SpO2 or High HR).';
+      } else if (vitals.bloodPressureSys > 160 || vitals.heartRate > 100 || vitals.spO2 < 95) {
+        level = 'HIGH';
+        reason = 'Rule-based: Abnormal vitals detected.';
+      }
+      
+      if (level) {
+        io.to('DOCTOR').to('ADMIN').to('NURSE').emit('alarm:new', { patientId: vitals.patientId, message: reason, level: level });
+      }
     }
     
     res.status(200).json({ status: 'success', message: 'Vitals ingested and broadcasted' });
@@ -433,6 +480,47 @@ app.get('/api/abg/history', async (req, res) => {
   }
 });
 
+// --- State for Features ---
+const CARE_SCHEDULES = {};
+const PATIENT_CALLS = [];
+
+app.get('/api/care-schedule/:patientId', (req, res) => {
+  res.json(CARE_SCHEDULES[req.params.patientId] || []);
+});
+
+app.put('/api/care-schedule/:patientId', (req, res) => {
+  CARE_SCHEDULES[req.params.patientId] = req.body;
+  res.json({ success: true });
+});
+
+app.get('/api/patient-calls', (req, res) => {
+  res.json(PATIENT_CALLS);
+});
+
+app.post('/api/patient-calls', (req, res) => {
+  const newCall = {
+    id: Date.now().toString(),
+    patientId: req.body.patientId,
+    patientName: req.body.patientName,
+    timestamp: new Date().toISOString(),
+    status: 'Active',
+    notes: ''
+  };
+  PATIENT_CALLS.push(newCall);
+  res.json(newCall);
+});
+
+app.put('/api/patient-calls/:id', (req, res) => {
+  const call = PATIENT_CALLS.find(c => c.id === req.params.id);
+  if (call) {
+    call.status = req.body.status || call.status;
+    call.notes = req.body.notes !== undefined ? req.body.notes : call.notes;
+    res.json(call);
+  } else {
+    res.status(404).json({ error: 'Call not found' });
+  }
+});
+
 // --- Socket.io Real-time Vitals Management ---
 io.on('connection', (socket) => {
   const role = socket.handshake.auth?.role;
@@ -443,8 +531,16 @@ io.on('connection', (socket) => {
   
   socket.on('start_monitoring', (patientId) => {
     console.log(`Dashboard client ${socket.id} started monitoring patient: ${patientId}`);
-    // In a real system, we might join a specific socket room here:
-    // socket.join(`patient_${patientId}`);
+  });
+
+  socket.on('patient_call', (data) => {
+    // Broadcast patient call to all staff
+    io.emit('patient_call_alert', data);
+  });
+  
+  socket.on('update_schedule', (data) => {
+    // Broadcast schedule update
+    io.emit('schedule_updated', data);
   });
 
   socket.on('disconnect', () => {

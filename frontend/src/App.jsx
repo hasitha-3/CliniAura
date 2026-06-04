@@ -12,6 +12,9 @@ import AlarmSettings from './pages/AlarmSettings';
 import AlertHistory from './pages/AlertHistory';
 import HomePage from './pages/HomePage';
 import EHRManager from './components/EHRManager';
+import CareSchedule from './components/CareSchedule';
+import useWardStore from './stores/wardStore';
+import PatientCalls from './components/PatientCalls';
 
 export const AuthContext = createContext(null);
 
@@ -405,7 +408,7 @@ const SettingsPage = () => {
                 </div>
               </div>
 
-              <button className="btn btn-secondary" type="submit" style={{ width: '100%', marginTop: '10px' }}>
+              <button className="btn btn-primary" type="submit" style={{ width: '100%', marginTop: '10px', background: 'var(--teal)', color: '#050a10', fontWeight: 'bold' }}>
                 Update Password
               </button>
             </form>
@@ -441,7 +444,7 @@ const SettingsPage = () => {
                   placeholder="Enter Agent API Key"
                 />
               </div>
-              <button className="btn btn-secondary" onClick={saveApiKey} style={{ width: '100%', marginTop: '10px' }}>
+              <button className="btn btn-primary" onClick={saveApiKey} style={{ width: '100%', marginTop: '10px' }}>
                 Save API Key
               </button>
             </div>
@@ -621,6 +624,16 @@ const AdminDashboard = () => {
   const [expandedRow, setExpandedRow] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRole, setSelectedRole] = useState('ALL');
+  
+  // New Admin Filters
+  const [selectedWard, setSelectedWard] = useState('ALL');
+  const [selectedRisk, setSelectedRisk] = useState('ALL');
+  const [sortOrder, setSortOrder] = useState('DESC'); // Admission Date Sorting
+  
+  // Assignment UI State
+  const [editingAssignmentFor, setEditingAssignmentFor] = useState(null);
+  const [tempDoctor, setTempDoctor] = useState('');
+  const [tempNurse, setTempNurse] = useState('');
 
   useEffect(() => {
     const token = JSON.parse(localStorage.getItem('cliniaura_user'))?.token;
@@ -635,14 +648,42 @@ const AdminDashboard = () => {
       });
   }, []);
 
+  const handleReassign = async (patientId) => {
+    try {
+      const token = JSON.parse(localStorage.getItem('cliniaura_user'))?.token;
+      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000'}/api/patients/${patientId}/assign`, {
+        method: 'PUT',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assignedDoctor: tempDoctor, assignedNurse: tempNurse })
+      });
+      if(res.ok) {
+        setUsers(users.map(u => u._id === patientId ? { ...u, assignedDoctor: tempDoctor, assignedNurse: tempNurse } : u));
+        setEditingAssignmentFor(null);
+      }
+    } catch (e) { console.error('Failed to reassign staff'); }
+  };
+
   const filteredUsers = users.filter(u => {
     const matchesSearch = !searchTerm || u.username.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesRole = selectedRole === 'ALL' || u.role === selectedRole;
+    
+    // Additional Patient Filters
+    if (u.role === 'PATIENT') {
+      const matchesWard = selectedWard === 'ALL' || u.ward === selectedWard;
+      const matchesRisk = selectedRisk === 'ALL' || u.riskScore === selectedRisk;
+      return matchesSearch && matchesRole && matchesWard && matchesRisk;
+    }
+    
     return matchesSearch && matchesRole;
+  }).sort((a, b) => {
+    if (a.role === 'PATIENT' && b.role === 'PATIENT' && a.admissionDate && b.admissionDate) {
+      return sortOrder === 'DESC' ? new Date(b.admissionDate) - new Date(a.admissionDate) : new Date(a.admissionDate) - new Date(b.admissionDate);
+    }
+    return 0;
   });
 
   return (
-    <div className="dashboard-container" style={{ padding: '16px 32px' }}>
+    <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '16px' }}>
         <div>
           <h2 style={{ margin: 0 }}>Global Treatment Compliance Audits</h2>
@@ -654,6 +695,37 @@ const AdminDashboard = () => {
         {/* Filters */}
         <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
 
+
+          <select
+            value={selectedWard}
+            onChange={e => setSelectedWard(e.target.value)}
+            style={{ padding: '6px 12px', borderRadius: '100px', border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text)', fontSize: '0.85rem', outline: 'none' }}
+          >
+            <option value="ALL">All Wards</option>
+            <option value="ICU">ICU</option>
+            <option value="Step-down Unit">Step-down Unit</option>
+            <option value="General Ward">General Ward</option>
+          </select>
+          <select
+            value={selectedRisk}
+            onChange={e => setSelectedRisk(e.target.value)}
+            style={{ padding: '6px 12px', borderRadius: '100px', border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text)', fontSize: '0.85rem', outline: 'none' }}
+          >
+            <option value="ALL">All Risks</option>
+            <option value="Critical">Critical</option>
+            <option value="High">High</option>
+            <option value="Medium">Medium</option>
+            <option value="Moderate">Moderate</option>
+            <option value="Low">Low</option>
+          </select>
+          <select
+            value={sortOrder}
+            onChange={e => setSortOrder(e.target.value)}
+            style={{ padding: '6px 12px', borderRadius: '100px', border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text)', fontSize: '0.85rem', outline: 'none' }}
+          >
+            <option value="DESC">Newest First</option>
+            <option value="ASC">Oldest First</option>
+          </select>
 
           <input
             type="text"
@@ -674,92 +746,244 @@ const AdminDashboard = () => {
         </div>
       </div>
       
-      <div className="glass-panel" style={{ padding: 0, overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-          <thead>
-            <tr style={{ background: 'rgba(15, 23, 42, 0.8)', borderBottom: '1px solid #334155' }}>
-              <th style={{ padding: '16px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>User ID / Node Name</th>
-              <th style={{ padding: '16px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>Assigned Clearance</th>
-              <th style={{ padding: '16px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>Therapeutic Status</th>
-              <th style={{ padding: '16px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>Compliance Ledger</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredUsers.map(u => (
-              <React.Fragment key={u._id}>
-                <tr style={{ borderBottom: '1px solid #334155', transition: 'background 0.2s' }} onMouseOver={e => e.currentTarget.style.background = 'rgba(0,212,170,0.02)'} onMouseOut={e => e.currentTarget.style.background = 'transparent'}>
-                  <td style={{ padding: '16px' }}>
-                    <strong>{u.username}</strong>
-                    {u.role === 'PATIENT' && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Ward: {u.ward || 'General Ward'}</div>}
-                  </td>
-                  <td style={{ padding: '16px' }}><span className="text-gradient font-bold">{u.role}</span></td>
-                  <td style={{ padding: '16px' }}>
-                    {u.role === 'PATIENT' ? (
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '24px' }}>
+        
+        {/* Patient Directory */}
+        <div className="glass-panel" style={{ padding: 0, overflow: 'hidden' }}>
+          <div style={{ padding: '16px', background: 'rgba(15, 23, 42, 0.8)', borderBottom: '1px solid #334155', fontWeight: 'bold' }}>Patient Directory</div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+            <thead>
+              <tr style={{ background: 'rgba(15, 23, 42, 0.5)', borderBottom: '1px solid #334155' }}>
+                <th style={{ padding: '16px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>Patient ID / Name</th>
+                <th style={{ padding: '16px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>Location</th>
+                <th style={{ padding: '16px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>Assigned Staff</th>
+                <th style={{ padding: '16px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>Risk / Protocols</th>
+                <th style={{ padding: '16px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>Audit Logs</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredUsers.filter(u => u.role === 'PATIENT').map(u => (
+                <React.Fragment key={u._id}>
+                  <tr style={{ borderBottom: '1px solid #334155', transition: 'background 0.2s' }} onMouseOver={e => e.currentTarget.style.background = 'rgba(0,212,170,0.02)'} onMouseOut={e => e.currentTarget.style.background = 'transparent'}>
+                    <td style={{ padding: '16px' }}>
+                      <strong>{u.username}</strong>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>{u.primaryDiagnosis || 'Pending'}</div>
+                    </td>
+                    <td style={{ padding: '16px', fontSize: '0.85rem' }}>{u.ward || 'General Ward'}</td>
+                    <td style={{ padding: '16px', fontSize: '0.85rem' }}>
+                      <div><span style={{ color: 'var(--text-dim)' }}>Dr:</span> {u.assignedDoctor || 'N/A'}</div>
+                      <div><span style={{ color: 'var(--text-dim)' }}>Rn:</span> {u.assignedNurse || 'N/A'}</div>
+                    </td>
+                    <td style={{ padding: '16px' }}>
                       <span className={`badge-risk risk-${u.riskScore}`}>{u.riskScore} Risk</span>
-                    ) : <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>System Sentinel</span>}
-                  </td>
-                  <td style={{ padding: '16px' }}>
-                    {u.role === 'PATIENT' && (
+                      <div style={{ fontSize: '0.75rem', color: 'var(--teal)', marginTop: '4px' }} className="truncate" title={u.activeProtocol}>{u.activeProtocol}</div>
+                    </td>
+                    <td style={{ padding: '16px' }}>
                       <button className="btn" style={{ background: expandedRow === u._id ? 'var(--teal)' : 'transparent', border: '1px solid var(--border)', color: expandedRow === u._id ? 'var(--bg)' : 'var(--teal)', padding: '4px 12px', fontSize: '0.8rem' }}
-                        onClick={() => setExpandedRow(expandedRow === u._id ? null : u._id)}>
-                        {expandedRow === u._id ? 'Hide Logs' : 'View AI Audits'}
+                        onClick={() => {
+                          setExpandedRow(expandedRow === u._id ? null : u._id);
+                          setTempDoctor(u.assignedDoctor || '');
+                          setTempNurse(u.assignedNurse || '');
+                          setEditingAssignmentFor(expandedRow === u._id ? null : u._id);
+                        }}>
+                        {expandedRow === u._id ? 'Hide Details' : 'View Full Details & Assign'}
                       </button>
-                    )}
-                  </td>
+                    </td>
+                  </tr>
+
+                </React.Fragment>
+              ))}
+              {filteredUsers.filter(u => u.role === 'PATIENT').length === 0 && (
+                <tr>
+                  <td colSpan="5" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>No patients match the criteria.</td>
                 </tr>
-                {expandedRow === u._id && u.role === 'PATIENT' && (
-                  <tr style={{ background: 'var(--bg2)' }}>
-                    <td colSpan="4" style={{ padding: '20px', borderBottom: '2px solid var(--teal)' }}>
-                      <div className="grid grid-cols-4 mb-4" style={{ gap: '12px' }}>
-                        <div className="metric-box">
-                          <div style={{fontSize: '0.75rem', color: '#94a3b8'}}>Protocol</div>
-                          <div className="metric-val" style={{fontSize: '0.95rem'}}>{u.activeProtocol || 'None'}</div>
-                        </div>
-                        <div className="metric-box">
-                          <div style={{fontSize: '0.75rem', color: '#94a3b8'}}>Target MAP</div>
-                          <div className="metric-val" style={{fontSize: '0.95rem'}}>{u.targetMAP} mmHg</div>
-                        </div>
-                        <div className="metric-box">
-                          <div style={{fontSize: '0.75rem', color: '#94a3b8'}}>Base Cardiac Output</div>
-                          <div className="metric-val" style={{fontSize: '0.95rem'}}>{u.baselineCO} L/min</div>
-                        </div>
-                        <div className="metric-box">
-                          <div style={{fontSize: '0.75rem', color: '#94a3b8'}}>Base Stroke Volume</div>
-                          <div className="metric-val" style={{fontSize: '0.95rem'}}>{u.baselineSV} mL</div>
-                        </div>
-                      </div>
-                      
-                      <h4 style={{marginBottom: '10px', fontSize: '0.9rem', color: 'var(--teal)'}}>
-                        AI Treatment Audit Ledger Events
-                      </h4>
-                      {(!u.auditLogs || u.auditLogs.length === 0) ? <p style={{color: '#94a3b8', fontSize: '0.85rem'}}>No offline audits pending.</p> : (
-                        <ul className="audit-list" style={{ marginTop: 0 }}>
-                          {u.auditLogs.map((log, i) => (
-                            <li key={i} className={`audit-item audit-${log.status.toLowerCase()}`}>
-                              <span style={{color: '#94a3b8', marginRight: '10px', fontSize: '0.75rem'}}>{new Date(log.timestamp).toLocaleTimeString()}</span>
-                              <strong>[{log.status}]</strong> {log.event}
-                            </li>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Staff Directory */}
+        <div className="glass-panel" style={{ padding: 0, overflow: 'hidden' }}>
+          <div style={{ padding: '16px', background: 'rgba(15, 23, 42, 0.8)', borderBottom: '1px solid #334155', fontWeight: 'bold' }}>Clinical Staff Directory</div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+            <thead>
+              <tr style={{ background: 'rgba(15, 23, 42, 0.5)', borderBottom: '1px solid #334155' }}>
+                <th style={{ padding: '16px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>Staff Member</th>
+                <th style={{ padding: '16px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>Clearance Role</th>
+                <th style={{ padding: '16px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>Assigned Patients under care</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredUsers.filter(u => u.role === 'DOCTOR' || u.role === 'NURSE').map(u => {
+                // Find patients assigned to this staff member
+                const staffPatients = users.filter(p => p.role === 'PATIENT' && (p.assignedDoctor === u.username || p.assignedNurse === u.username));
+                
+                return (
+                  <tr key={u._id} style={{ borderBottom: '1px solid #334155', transition: 'background 0.2s' }} onMouseOver={e => e.currentTarget.style.background = 'rgba(0,212,170,0.02)'} onMouseOut={e => e.currentTarget.style.background = 'transparent'}>
+                    <td style={{ padding: '16px' }}>
+                      <strong>{u.name || u.username}</strong>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>@{u.username}</div>
+                    </td>
+                    <td style={{ padding: '16px' }}>
+                      <span className="text-gradient font-bold">{u.role}</span>
+                    </td>
+                    <td style={{ padding: '16px', fontSize: '0.85rem', color: 'var(--text-dim)' }}>
+                      {staffPatients.length > 0 ? (
+                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                          {staffPatients.map(sp => (
+                            <span key={sp._id} style={{ background: 'rgba(255,255,255,0.05)', padding: '2px 8px', borderRadius: '4px' }}>{sp.username}</span>
                           ))}
-                        </ul>
+                        </div>
+                      ) : (
+                        <span>No patients currently assigned.</span>
                       )}
                     </td>
                   </tr>
-                )}
-              </React.Fragment>
-            ))}
-            {filteredUsers.length === 0 && (
-              <tr>
-                <td colSpan="4" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>No node stream matches the criteria.</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+                );
+              })}
+              {filteredUsers.filter(u => u.role === 'DOCTOR' || u.role === 'NURSE').length === 0 && (
+                <tr>
+                  <td colSpan="3" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>No staff members found.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
       </div>
+      
+      {/* Patient Details Full-Screen Modal */}
+      {expandedRow && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(5, 10, 16, 0.95)', zIndex: 1000, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '40px', backdropFilter: 'blur(4px)' }}>
+          <div className="glass-panel" style={{ width: '100%', maxWidth: '900px', maxHeight: '90vh', overflowY: 'auto', background: 'var(--bg2)', padding: '40px', position: 'relative', border: '1px solid var(--teal)', boxShadow: '0 20px 40px rgba(0,0,0,0.5)' }}>
+            <button onClick={() => setExpandedRow(null)} style={{ position: 'absolute', top: '20px', right: '20px', background: 'var(--teal)', color: 'var(--bg)', border: 'none', borderRadius: '50%', width: '36px', height: '36px', cursor: 'pointer', fontWeight: 'bold', fontSize: '1.2rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>&times;</button>
+            {(() => {
+              const u = filteredUsers.find(user => user._id === expandedRow);
+              if (!u) return null;
+              return (
+                <div style={{ animation: 'fade-up 0.3s ease' }}>
+                  <h2 style={{ color: 'var(--teal)', marginBottom: '30px', marginTop: 0, fontSize: '1.8rem' }}>Patient Details: {u.name || u.username}</h2>
+                  
+                  <div className="grid grid-cols-4 mb-4" style={{ gap: '16px' }}>
+                    <div className="metric-box" style={{ gridColumn: 'span 4', display: 'flex', flexWrap: 'wrap', gap: '24px', padding: '20px', background: 'rgba(15, 23, 42, 0.5)' }}>
+                      <div style={{ flex: '1 1 200px' }}>
+                        <div style={{fontSize: '0.8rem', color: '#94a3b8', textTransform: 'uppercase'}}>Full Name</div>
+                        <div className="metric-val" style={{fontSize: '1.2rem'}}>{u.name || u.username}</div>
+                      </div>
+                      <div style={{ flex: '1 1 100px' }}>
+                        <div style={{fontSize: '0.8rem', color: '#94a3b8', textTransform: 'uppercase'}}>Patient ID</div>
+                        <div className="metric-val" style={{fontSize: '1.2rem'}}>{u.patientId || u._id}</div>
+                      </div>
+                      <div style={{ flex: '1 1 100px' }}>
+                        <div style={{fontSize: '0.8rem', color: '#94a3b8', textTransform: 'uppercase'}}>Age / Gender</div>
+                        <div className="metric-val" style={{fontSize: '1.2rem'}}>{u.age ? `${u.age} yrs` : 'N/A'} / {u.gender || 'N/A'}</div>
+                      </div>
+                      <div style={{ flex: '1 1 200px' }}>
+                        <div style={{fontSize: '0.8rem', color: '#94a3b8', textTransform: 'uppercase'}}>Location</div>
+                        <div className="metric-val" style={{fontSize: '1.2rem'}}>{u.ward || 'General Ward'} {u.bedId ? `- ${u.bedId}` : ''}</div>
+                      </div>
+                    </div>
+                    <div className="metric-box" style={{ gridColumn: 'span 4', display: 'flex', flexWrap: 'wrap', gap: '24px', padding: '20px', background: 'rgba(15, 23, 42, 0.5)' }}>
+                      <div style={{ flex: '1 1 200px' }}>
+                        <div style={{fontSize: '0.8rem', color: '#94a3b8', textTransform: 'uppercase'}}>Primary Diagnosis</div>
+                        <div className="metric-val" style={{fontSize: '1.2rem', color: '#38bdf8'}}>{u.primaryDiagnosis || u.diagnosis || 'Pending'}</div>
+                      </div>
+                      <div style={{ flex: '1 1 200px' }}>
+                        <div style={{fontSize: '0.8rem', color: '#94a3b8', textTransform: 'uppercase'}}>Protocol</div>
+                        <div className="metric-val" style={{fontSize: '1.2rem'}}>{u.activeProtocol || 'None'}</div>
+                      </div>
+                      <div style={{ flex: '1 1 200px' }}>
+                        <div style={{fontSize: '0.8rem', color: '#94a3b8', textTransform: 'uppercase'}}>Admission Date</div>
+                        <div className="metric-val" style={{fontSize: '1.2rem'}}>{u.admissionDate || u.admittedOn ? new Date(u.admissionDate || u.admittedOn).toLocaleString() : 'N/A'}</div>
+                      </div>
+                    </div>
+                    <div className="metric-box" style={{ padding: '20px', background: 'rgba(15, 23, 42, 0.5)' }}>
+                      <div style={{fontSize: '0.8rem', color: '#94a3b8', textTransform: 'uppercase'}}>Risk Score</div>
+                      <div className="metric-val" style={{fontSize: '1.2rem'}}><span className={`badge-risk risk-${u.riskScore}`}>{u.riskScore}</span></div>
+                    </div>
+                    <div className="metric-box" style={{ padding: '20px', background: 'rgba(15, 23, 42, 0.5)' }}>
+                      <div style={{fontSize: '0.8rem', color: '#94a3b8', textTransform: 'uppercase'}}>Target MAP</div>
+                      <div className="metric-val" style={{fontSize: '1.2rem'}}>{u.targetMAP} mmHg</div>
+                    </div>
+                    <div className="metric-box" style={{ padding: '20px', background: 'rgba(15, 23, 42, 0.5)' }}>
+                      <div style={{fontSize: '0.8rem', color: '#94a3b8', textTransform: 'uppercase'}}>Base Cardiac Output</div>
+                      <div className="metric-val" style={{fontSize: '1.2rem'}}>{u.baselineCO} L/min</div>
+                    </div>
+                    <div className="metric-box" style={{ padding: '20px', background: 'rgba(15, 23, 42, 0.5)' }}>
+                      <div style={{fontSize: '0.8rem', color: '#94a3b8', textTransform: 'uppercase'}}>Base Stroke Volume</div>
+                      <div className="metric-val" style={{fontSize: '1.2rem'}}>{u.baselineSV} mL</div>
+                    </div>
+                  </div>
+
+                  {/* Admin Reassignment & Full Details */}
+                  <div style={{ background: 'rgba(15, 23, 42, 0.6)', padding: '24px', borderRadius: '12px', marginBottom: '20px', border: '1px solid #334155' }}>
+                    <h4 style={{ margin: '0 0 16px 0', fontSize: '1.1rem', color: 'var(--teal)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      Clinical Staff Assignment
+                      <button onClick={() => handleReassign(u._id)} className="btn btn-primary" style={{ padding: '8px 16px', fontSize: '0.9rem' }}>Save Assignment</button>
+                    </h4>
+                    <div style={{ display: 'flex', gap: '24px' }}>
+                      <div style={{ flex: 1 }}>
+                        <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '8px' }}>Assign Doctor (Filtered by Specialty & Shift)</label>
+                        <select value={tempDoctor} onChange={e => setTempDoctor(e.target.value)} style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: '0.9rem' }}>
+                          <option value="">-- Select Doctor --</option>
+                          {users.filter(staff => staff.role === 'DOCTOR').map(doc => (
+                            <option key={doc._id} value={doc.username}>{doc.name} ({doc.specialty || 'General'}) - {doc.shift || 'Any'} Shift</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '8px' }}>Assign Nurse (Filtered by Shift)</label>
+                        <select value={tempNurse} onChange={e => setTempNurse(e.target.value)} style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: '0.9rem' }}>
+                          <option value="">-- Select Nurse --</option>
+                          {users.filter(staff => staff.role === 'NURSE').map(nurse => (
+                            <option key={nurse._id} value={nurse.username}>{nurse.name} - {nurse.shift || 'Any'} Shift</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Care Schedule Preview */}
+                  <div style={{ marginBottom: '20px' }}>
+                     <CareSchedule patientId={u._id} patientName={u.name || u.username} role="ADMIN" />
+                  </div>
+                  
+                  {/* Clinical Documents */}
+                  <div style={{ marginBottom: '20px', background: 'rgba(15, 23, 42, 0.6)', padding: '24px', borderRadius: '12px' }}>
+                    <h4 style={{ margin: '0 0 16px 0', fontSize: '1.1rem', color: 'var(--teal)' }}>Patient Documents & AI Reports</h4>
+                    <div style={{ display: 'flex', gap: '12px' }}>
+                       <button className="btn" style={{ background: 'var(--teal)', border: '1px solid var(--teal)', color: 'var(--bg)', fontSize: '0.9rem', padding: '10px 20px', fontWeight: 'bold' }}>View EHR PDF</button>
+                       <button className="btn" style={{ background: 'var(--teal)', border: '1px solid var(--teal)', color: 'var(--bg)', fontSize: '0.9rem', padding: '10px 20px', fontWeight: 'bold' }}>View ABG Lab PDF</button>
+                       <button className="btn" style={{ background: '#38bdf8', border: '1px solid #38bdf8', color: 'var(--bg)', fontSize: '0.9rem', padding: '10px 20px', fontWeight: 'bold' }}>Download MedGemma AI Report</button>
+                    </div>
+                  </div>
+                  
+                  <h4 style={{marginBottom: '12px', fontSize: '1.1rem', color: 'var(--teal)'}}>
+                    AI Treatment Audit Ledger Events
+                  </h4>
+                  {(!u.auditLogs || u.auditLogs.length === 0) ? <p style={{color: '#94a3b8', fontSize: '0.9rem'}}>No offline audits pending.</p> : (
+                    <ul className="audit-list" style={{ marginTop: 0, background: 'rgba(15, 23, 42, 0.6)', padding: '20px', borderRadius: '12px' }}>
+                      {u.auditLogs.map((log, i) => (
+                        <li key={i} className={`audit-item audit-${log.status.toLowerCase()}`}>
+                          <span style={{color: '#94a3b8', marginRight: '10px', fontSize: '0.85rem'}}>{new Date(log.timestamp).toLocaleTimeString()}</span>
+                          <strong>[{log.status}]</strong> {log.event}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
 const DoctorDashboard = () => {
+  const { user } = useContext(AuthContext);
+  const { activeAlerts, updateVitals, acknowledgeAlert } = useWardStore();
   const [patients, setPatients] = useState([]);
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [expandedPatientId, setExpandedPatientId] = useState(null);
@@ -767,6 +991,11 @@ const DoctorDashboard = () => {
   const [vitalsData, setVitalsData] = useState([]);
   const [alert, setAlert] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // New filters for clinicians
+  const [selectedWard, setSelectedWard] = useState('ALL');
+  const [selectedRisk, setSelectedRisk] = useState('ALL');
+  const [sortOrder, setSortOrder] = useState('DESC');
 
   useEffect(() => {
     const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
@@ -775,7 +1004,7 @@ const DoctorDashboard = () => {
       headers: { 'Authorization': `Bearer ${token}` }
     })
       .then(res => res.json())
-      .then(data => setPatients(data || []))
+      .then(data => setPatients(Array.isArray(data) ? data : []))
       .catch(() => {
         console.warn("Using dummy data for DoctorDashboard");
         setPatients(generateDummyPatients());
@@ -787,20 +1016,31 @@ const DoctorDashboard = () => {
 
     newSocket.on('vitals_update', (data) => {
       setVitalsData(prev => {
-        const updated = [...prev, data.vitals].slice(-20);
-        return updated;
+        // only keep vitals if they match the selected patient.
+        // wait, we don't have access to selectedPatient here directly unless we use a ref or depend on it.
+        // It's better to handle the filtering inside the effect that depends on selectedPatient.
+        return prev;
       });
-      setAlert(data.alert);
     });
 
     return () => newSocket.close();
   }, []);
 
   useEffect(() => {
+    const handleVitals = (data) => {
+      if (data.vitals.patientId === selectedPatient._id) {
+        setVitalsData(prev => [...prev, data.vitals].slice(-20));
+        if (data.alert) setAlert(data.alert);
+      }
+    };
+    
     if (selectedPatient) {
       setVitalsData([]);
       setAlert(null);
-      if (socket) socket.emit('start_monitoring', selectedPatient._id);
+      if (socket) {
+        socket.emit('start_monitoring', selectedPatient._id);
+        socket.on('vitals_update', handleVitals);
+      }
       
       // Setup demo interval if backend is unavailable
       if (!socket || !socket.connected) {
@@ -816,6 +1056,7 @@ const DoctorDashboard = () => {
       }
     }
     return () => {
+       if (socket) socket.off('vitals_update', handleVitals);
        if (window.doctorDemoInterval) clearInterval(window.doctorDemoInterval);
     };
   }, [selectedPatient, socket]);
@@ -829,14 +1070,25 @@ const DoctorDashboard = () => {
     HeartRate: v.heartRate
   }));
 
-  const filteredPatients = patients.filter(p => {
-    if (!searchTerm) return true;
-    return p.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
+  const [showMyPatientsOnly, setShowMyPatientsOnly] = useState(user?.role === 'NURSE');
+
+  const filteredPatients = (Array.isArray(patients) ? patients : []).filter(p => {
+    const matchesSearch = !searchTerm || p.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
            (p.activeProtocol && p.activeProtocol.toLowerCase().includes(searchTerm.toLowerCase()));
+    const isMyPatientsView = showMyPatientsOnly || user?.role === 'NURSE';
+    const matchesMyPatients = !isMyPatientsView || p.assignedNurse === user?.username || p.assignedDoctor === user?.username;
+    const matchesWard = selectedWard === 'ALL' || p.ward === selectedWard;
+    const matchesRisk = selectedRisk === 'ALL' || p.riskScore === selectedRisk;
+    return matchesSearch && matchesMyPatients && matchesWard && matchesRisk;
+  }).sort((a, b) => {
+    if (a.admissionDate && b.admissionDate) {
+      return sortOrder === 'DESC' ? new Date(b.admissionDate) - new Date(a.admissionDate) : new Date(a.admissionDate) - new Date(b.admissionDate);
+    }
+    return 0;
   });
 
   return (
-    <div className="dashboard-container" style={{ padding: '16px 32px' }}>
+    <div>
       <div style={{ display: 'flex', gap: '24px', alignItems: 'stretch' }}>
         
         {/* System Patient Roster */}
@@ -846,69 +1098,77 @@ const DoctorDashboard = () => {
             <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{filteredPatients.length} Connected</span>
           </div>
 
-          <input
-            type="text"
-            placeholder="Search patient or protocol..."
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-            style={{
-              width: '100%',
-              padding: '8px 14px',
-              borderRadius: '100px',
-              border: '1px solid var(--border)',
-              background: 'var(--bg2)',
-              color: 'var(--text)',
-              fontSize: '0.85rem',
-              outline: 'none',
-              marginBottom: '16px'
-            }}
-          />
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
+            <input
+              type="text"
+              placeholder="Search patient or protocol..."
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              style={{
+                flex: 1, minWidth: '150px', padding: '8px 12px', borderRadius: '100px', border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text)', fontSize: '0.85rem', outline: 'none'
+              }}
+            />
+            <select
+              value={selectedWard}
+              onChange={e => setSelectedWard(e.target.value)}
+              style={{ padding: '8px 12px', borderRadius: '100px', border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text)', fontSize: '0.85rem', outline: 'none' }}
+            >
+              <option value="ALL">All Wards</option>
+              <option value="ICU">ICU</option>
+              <option value="General Ward">General Ward</option>
+              <option value="Step-down Unit">Step-down Unit</option>
+            </select>
+            <select
+              value={selectedRisk}
+              onChange={e => setSelectedRisk(e.target.value)}
+              style={{ padding: '8px 12px', borderRadius: '100px', border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text)', fontSize: '0.85rem', outline: 'none' }}
+            >
+              <option value="ALL">All Risks</option>
+              <option value="Critical">Critical</option>
+              <option value="High">High</option>
+              <option value="Medium">Medium</option>
+              <option value="Low">Low</option>
+            </select>
+            <select
+              value={sortOrder}
+              onChange={e => setSortOrder(e.target.value)}
+              style={{ padding: '8px 12px', borderRadius: '100px', border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text)', fontSize: '0.85rem', outline: 'none' }}
+            >
+              <option value="DESC">Newest First</option>
+              <option value="ASC">Oldest First</option>
+            </select>
+            {user?.role === 'DOCTOR' && (
+              <button
+                onClick={() => setShowMyPatientsOnly(!showMyPatientsOnly)}
+                style={{
+                  padding: '8px 14px',
+                  borderRadius: '100px',
+                  border: `1px solid ${showMyPatientsOnly ? 'var(--teal)' : 'var(--border)'}`,
+                  background: showMyPatientsOnly ? 'rgba(0, 212, 170, 0.15)' : 'var(--bg2)',
+                  color: showMyPatientsOnly ? 'var(--teal)' : 'var(--text-muted)',
+                  fontSize: '0.8rem',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                My Patients
+              </button>
+            )}
+          </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 1, overflowY: 'auto', paddingRight: '4px' }}>
             {filteredPatients.map(p => (
-              <div key={p._id} className="patient-card" style={{ borderColor: selectedPatient?._id === p._id ? '#38bdf8' : '#334155', margin: 0 }}>
-                <div className="patient-header" onClick={() => setExpandedPatientId(expandedPatientId === p._id ? null : p._id)}>
+              <div key={p._id} className="patient-card" style={{ borderColor: selectedPatient?._id === p._id ? '#38bdf8' : '#334155', margin: 0, cursor: 'pointer' }} onClick={() => setSelectedPatient(p)}>
+                <div className="patient-header">
                   <div>
                     <div style={{ fontWeight: 'bold', fontSize: '1.05rem' }}>{p.username} <span style={{fontSize: '0.75rem', color: '#94a3b8', fontWeight: 'normal'}}>{p.age}yrs</span></div>
                     <div style={{ fontSize: '0.75rem', color: 'var(--teal-dim)', marginTop: '2px' }}>{p.activeProtocol || 'No Protocol Assigned'}</div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span className={`badge-risk risk-${p.riskScore}`}>{p.riskScore}</span>
-                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{expandedPatientId === p._id ? '▲' : '▼'}</span>
                   </div>
                 </div>
-                
-                {expandedPatientId === p._id && (
-                  <div className="patient-details-expanded" style={{ animation: 'fade-up 0.2s ease' }}>
-                    <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
-                      <div className="metric-box" style={{flex: 1, padding: '6px'}}>
-                        <div style={{fontSize: '0.65rem', color: '#94a3b8'}} title="Mean Arterial Pressure">Target MAP</div>
-                        <div className="metric-val" style={{fontSize: '0.9rem'}}>{p.targetMAP} <span style={{fontSize: '0.65rem', fontWeight:'normal'}}>mmHg</span></div>
-                      </div>
-                      <div className="metric-box" style={{flex: 1, padding: '6px'}}>
-                        <div style={{fontSize: '0.65rem', color: '#94a3b8'}} title="Cardiac Output">Base CO</div>
-                        <div className="metric-val" style={{fontSize: '0.9rem'}}>{p.baselineCO} <span style={{fontSize: '0.65rem', fontWeight:'normal'}}>L/m</span></div>
-                      </div>
-                      <div className="metric-box" style={{flex: 1, padding: '6px'}}>
-                        <div style={{fontSize: '0.65rem', color: '#94a3b8'}} title="Stroke Volume">Base SV</div>
-                        <div className="metric-val" style={{fontSize: '0.9rem'}}>{p.baselineSV} <span style={{fontSize: '0.65rem', fontWeight:'normal'}}>mL</span></div>
-                      </div>
-                    </div>
-                    
-                    <div style={{fontSize: '0.75rem', color: '#94a3b8', marginBottom: '6px'}}>Recent AI Treatment Audits:</div>
-                    <ul className="audit-list" style={{ marginTop: 0, fontSize: '0.75rem' }}>
-                      {p.auditLogs?.slice(0, 2).map((log, i) => (
-                        <li key={i} className={`audit-item audit-${log.status.toLowerCase()}`} style={{ padding: '4px 8px', marginBottom: '4px' }}>
-                          <strong>[{log.status}]</strong> {log.event}
-                        </li>
-                      )) || <li style={{color:'var(--text-muted)'}}>No audits logged.</li>}
-                    </ul>
-
-                    <button className="btn btn-primary" style={{ width: '100%', marginTop: '10px', padding: '6px', fontSize: '0.8rem' }} onClick={(e) => { e.stopPropagation(); setSelectedPatient(p); }}>
-                      Monitor Live Edge Stream
-                    </button>
-                  </div>
-                )}
               </div>
             ))}
             {filteredPatients.length === 0 && (
@@ -919,13 +1179,12 @@ const DoctorDashboard = () => {
           </div>
         </div>
         
-        {/* Active Stream View */}
         <div style={{ flex: 2.5, display: 'flex', flexDirection: 'column' }}>
           {!selectedPatient ? (
             <div className="glass-panel" style={{ textAlign: 'center', padding: '100px 50px', color: '#94a3b8', margin: 'auto 0' }}>
               <Activity size={64} style={{ opacity: 0.2, marginBottom: '20px', margin: '0 auto' }} />
               <h2>No Stream Connected</h2>
-              <p style={{ fontSize: '0.9rem' }}>Expand a patient card in the roster and initialize the Edge Stream.</p>
+              <p style={{ fontSize: '0.9rem' }}>Select a patient from the roster to initialize the Edge Stream.</p>
             </div>
           ) : (
             <div>
@@ -956,45 +1215,21 @@ const DoctorDashboard = () => {
                       <div className="vital-value" style={{ color: latestVitals.heartRate > 100 ? '#ff4d6a' : 'white', margin: '2px 0', fontSize: '2rem' }}>{latestVitals.heartRate}</div>
                       <div style={{ color: '#94a3b8', fontSize: '0.75rem', textAlign: 'center' }}>Heart Rate (bpm)</div>
                     </div>
-                    
                     <div className="glass-panel vital-card" style={{ padding: '12px' }}>
                       <div className="vital-value" style={{ margin: '2px 0', fontSize: '2rem' }}>{latestVitals.bloodPressureSys}/{latestVitals.bloodPressureDia}</div>
                       <div style={{ color: '#94a3b8', fontSize: '0.75rem', textAlign: 'center' }}>NIBP (mmHg)</div>
                     </div>
-                    
                     <div className="glass-panel vital-card" style={{ padding: '12px', borderColor: mapData[mapData.length-1]?.MAP < selectedPatient.targetMAP ? '#ff4d6a' : 'var(--border)' }}>
                       <div className="vital-value" style={{ color: mapData[mapData.length-1]?.MAP < selectedPatient.targetMAP ? '#ff4d6a' : '#38bdf8', margin: '2px 0', fontSize: '2rem' }}>
                         {mapData[mapData.length-1]?.MAP}
                       </div>
                       <div style={{ color: '#94a3b8', fontSize: '0.75rem', textAlign: 'center' }}>MAP (mmHg)</div>
                     </div>
-
                     <div className="glass-panel vital-card" style={{ padding: '12px', background: 'rgba(0, 212, 170, 0.05)', borderColor: 'var(--teal)' }}>
                       <div className="vital-value truncate" style={{ color: 'var(--teal)', margin: '2px 0', fontSize: '1.1rem', maxWidth: '100%' }} title={selectedPatient.activeProtocol}>
                         {selectedPatient.activeProtocol || 'None'}
                       </div>
                       <div style={{ color: '#94a3b8', fontSize: '0.75rem', textAlign: 'center' }}>Currently Auditing</div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-4 mb-4" style={{ gap: '12px' }}>
-                    <div className="glass-panel vital-card" style={{ padding: '12px' }}>
-                      <div className="vital-value" style={{ margin: '2px 0', fontSize: '1.5rem', color: 'var(--text)' }}>{latestVitals.respirationRate || '--'}</div>
-                      <div style={{ color: '#94a3b8', fontSize: '0.75rem', textAlign: 'center' }}>Respiration (BrPM)</div>
-                    </div>
-                    <div className="glass-panel vital-card" style={{ padding: '12px' }}>
-                      <div className="vital-value" style={{ margin: '2px 0', fontSize: '1.5rem', color: 'var(--text)' }}>{latestVitals.steps || '--'}</div>
-                      <div style={{ color: '#94a3b8', fontSize: '0.75rem', textAlign: 'center' }}>Steps (Count)</div>
-                    </div>
-                    <div className="glass-panel vital-card" style={{ padding: '12px' }}>
-                      <div className="vital-value" style={{ margin: '2px 0', fontSize: '1.5rem', color: 'var(--text)' }}>{latestVitals.posture || '--'}</div>
-                      <div style={{ color: '#94a3b8', fontSize: '0.75rem', textAlign: 'center' }}>Posture</div>
-                    </div>
-                    <div className="glass-panel vital-card" style={{ padding: '12px' }}>
-                      <div className="vital-value" style={{ margin: '2px 0', fontSize: '1.1rem', color: latestVitals.fallDetected ? '#ff4d6a' : 'var(--teal)' }}>
-                        {latestVitals.fallDetected ? 'Fall Detected' : 'No Falls'}
-                      </div>
-                      <div style={{ color: '#94a3b8', fontSize: '0.75rem', textAlign: 'center' }}>Fall Detection</div>
                     </div>
                   </div>
 
@@ -1031,6 +1266,8 @@ const DoctorDashboard = () => {
 const PatientDashboard = () => {
   const [profile, setProfile] = useState(null);
   const [latestVitals, setLatestVitals] = useState(null);
+  const [socket, setSocket] = useState(null);
+  const [callStatus, setCallStatus] = useState('');
   const { user } = useContext(AuthContext);
 
   useEffect(() => {
@@ -1045,9 +1282,16 @@ const PatientDashboard = () => {
         const me = Array.isArray(data) ? data.find(p => p.username === user.username) : null;
         if (me) setProfile(me);
       })
-      .catch(console.error);
+      .catch(() => {
+        console.warn("Using dummy data for profile");
+        const pts = generateDummyPatients();
+        const me = pts.find(p => p.username === user.username) || pts[0];
+        setProfile(me);
+      });
 
-    const socket = io(API_URL);
+    const newSocket = io(API_URL, { auth: { token, role: user?.role } });
+    setSocket(newSocket);
+    
     if (user && user.role === 'PATIENT') {
       const savedUser = JSON.parse(localStorage.getItem('cliniaura_user'));
       // Using username to map to ID since our in-memory DB uses 1, 2 etc. 
@@ -1058,12 +1302,36 @@ const PatientDashboard = () => {
         .then(data => {
            const me = Array.isArray(data) ? data.find(p => p.username === user.username) : null;
            if (me) {
-             socket.emit('start_monitoring', me._id);
-             socket.on('vitals_update', (socketData) => {
-               if (socketData.vitals.patientId === me._id) {
+             newSocket.emit('start_monitoring', me._id);
+             newSocket.on('vitals_update', (socketData) => {
+               if (String(socketData.vitals.patientId) === String(me._id)) {
                  setLatestVitals(socketData.vitals);
                }
              });
+             
+             // Fallback if no vitals received from Edge stream after 5 seconds
+             setTimeout(() => {
+               setLatestVitals(current => {
+                 if (!current) {
+                   console.warn("No edge vitals received. Using simulated dummy telemetry.");
+                   if (window.patientDemoInterval) clearInterval(window.patientDemoInterval);
+                   window.lastPatVitals = null;
+                   
+                   // Generate first frame immediately to avoid blank screen
+                   const firstDummy = generateDummyVitals(me._id, window.lastPatVitals);
+                   window.lastPatVitals = firstDummy;
+                   
+                   window.patientDemoInterval = setInterval(() => {
+                     const dummy = generateDummyVitals(me._id, window.lastPatVitals);
+                     window.lastPatVitals = dummy;
+                     setLatestVitals(dummy);
+                   }, 3000);
+                   
+                   return firstDummy;
+                 }
+                 return current;
+               });
+             }, 5000);
            }
         })
         .catch(() => {
@@ -1083,13 +1351,13 @@ const PatientDashboard = () => {
     }
 
     return () => {
-       socket.disconnect();
+       newSocket.disconnect();
        if (window.patientDemoInterval) clearInterval(window.patientDemoInterval);
     };
   }, [user]);
 
   return (
-    <div className="dashboard-container" style={{ padding: '24px', animation: 'fade-up 0.3s ease' }}>
+    <div style={{ animation: 'fade-up 0.3s ease' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
         <div>
           <h2 style={{ margin: 0 }}>{profile ? `${profile.name} - Dashboard` : `${user.username}`}</h2>
@@ -1098,11 +1366,40 @@ const PatientDashboard = () => {
               <strong>ID:</strong> {profile.patientId || 'Pending'} &nbsp;|&nbsp; 
               <strong>Age/Sex:</strong> {profile.age}{profile.gender ? ` / ${profile.gender}` : ''} &nbsp;|&nbsp; 
               <strong>Diagnosis:</strong> {profile.primaryDiagnosis || 'Under Evaluation'}
+              
+              <div style={{ marginTop: '8px', display: 'flex', gap: '16px', flexWrap: 'wrap', color: 'var(--text-muted)' }}>
+                <span><strong>Admitted:</strong> {profile.admissionDate ? new Date(profile.admissionDate).toLocaleString() : '--'}</span>
+                <span><strong>Diagnosed:</strong> {profile.diagnosisDate ? new Date(profile.diagnosisDate).toLocaleString() : '--'}</span>
+                <span><strong>Nurse:</strong> {profile.assignedNurse || 'Unassigned'}</span>
+                <span><strong>Doctor:</strong> {profile.assignedDoctor || 'Unassigned'}</span>
+              </div>
             </div>
           )}
         </div>
-        <div style={{ color: 'var(--teal)', fontSize: '0.9rem', fontWeight: 'bold' }}>
-          <span className="live-pulse"></span> Dashboard Connected
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '12px' }}>
+          <div style={{ color: 'var(--teal)', fontSize: '0.9rem', fontWeight: 'bold' }}>
+            <span className="live-pulse"></span> Dashboard Connected
+          </div>
+          <button 
+            onClick={() => {
+              if (!profile || !socket) return;
+              const callData = { patientId: profile._id, patientName: profile.name || profile.username, timestamp: new Date().toISOString() };
+              fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000'}/api/patient-calls`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(callData)
+              }).then(res => res.json()).then(data => {
+                socket.emit('patient_call', data);
+                setCallStatus('Nurse has been notified!');
+                setTimeout(() => setCallStatus(''), 5000);
+              });
+            }}
+            className="btn"
+            style={{ background: '#ff4d6a', color: 'white', border: 'none', padding: '10px 20px', fontSize: '1rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 15px rgba(255, 77, 106, 0.3)' }}
+          >
+            <Bell size={18} /> Call Nurse / Request Assistance
+          </button>
+          {callStatus && <div style={{ color: '#ff4d6a', fontSize: '0.85rem', fontWeight: 'bold' }}>{callStatus}</div>}
         </div>
       </div>
       
@@ -1191,24 +1488,36 @@ const PatientDashboard = () => {
 
           <div className="glass-panel vital-card" style={{ padding: '20px', background: 'rgba(14, 165, 233, 0.15)', borderColor: 'rgba(56, 189, 248, 0.3)', gridColumn: 'span 2' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#bae6fd', fontSize: '0.8rem', textTransform: 'uppercase' }}>
-              <ShieldAlert size={18} color="#38bdf8" /> Fall Detection
+                        <ShieldAlert size={18} color="#38bdf8" /> Fall Detection
             </div>
             <div className="vital-value" style={{ margin: '15px 0 5px 0', fontSize: '2rem', color: latestVitals?.fallDetected ? '#ff4d6a' : 'var(--teal)', fontWeight: 'bold' }}>
               {latestVitals ? (latestVitals.fallDetected ? 'Fall Detected' : 'No falls detected') : '--'}
             </div>
           </div>
 
-          <div style={{ gridColumn: 'span 3' }}>
-            <EHRManager 
-              patientId={profile._id} 
-              patientName={profile.name || profile.username} 
-              patientAge={profile.age}
-            />
-          </div>
+          {profile && (
+            <>
+              <div style={{ gridColumn: 'span 3' }}>
+                <EHRManager 
+                  patientId={profile._id} 
+                  patientName={profile.name || profile.username} 
+                  patientAge={profile.age}
+                />
+              </div>
+
+              <div style={{ gridColumn: 'span 3' }}>
+                <CareSchedule 
+                  patientId={profile._id} 
+                  patientName={profile.name || profile.username} 
+                  role="PATIENT"
+                />
+              </div>
+            </>
+          )}
 
         </div>
       ) : (
-        <div style={{ textAlign: 'center', marginTop: '50px', color: 'var(--text-muted)' }}>Loading your dashboard...</div>
+        <div style={{ textAlign: 'center', marginTop: '50px', color: 'var(--text-muted)' }}>Loading dashboard data...</div>
       )}
     </div>
   );
@@ -1248,7 +1557,7 @@ const DashboardRouter = () => {
   if (!user) return <Navigate to="/login" />;
   
   return (
-    <div style={{ animation: 'fade-up 0.3s ease' }}>
+    <div className="dashboard-container" style={{ animation: 'fade-up 0.3s ease' }}>
       {/* Prominent Unified Header for User Personal Context */}
       <div className="glass-panel mb-4" style={{ 
         background: 'linear-gradient(135deg, rgba(0, 212, 170, 0.04) 0%, rgba(0, 194, 224, 0.04) 100%)', 
@@ -1294,16 +1603,12 @@ const DashboardRouter = () => {
           </div>
         )}
 
-        {personalInfo && (user.role === 'DOCTOR' || user.role === 'ADMIN') && (
-          <div className="mt-3" style={{ fontSize: '0.85rem', color: 'var(--text-dim)', borderTop: '1px solid rgba(0, 212, 170, 0.1)', paddingTop: '0.8rem' }}>
-            <strong>System Registry Key:</strong> {personalInfo._id} | <strong>Authority Clearance:</strong> Complete administrative diagnostic and real-time hemodynamic command streams enabled.
-          </div>
-        )}
+
       </div>
 
       {/* Embedded Component Interfaces */}
       {user.role === 'ADMIN' && <AdminDashboard />}
-      {user.role === 'DOCTOR' && <DoctorDashboard />}
+      {(user.role === 'DOCTOR' || user.role === 'NURSE') && <DoctorDashboard />}
       {user.role === 'PATIENT' && <PatientDashboard />}
     </div>
   );

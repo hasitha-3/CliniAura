@@ -38,7 +38,7 @@ const AlarmSettings = () => {
   };
 
   return (
-    <div className="dashboard-container" style={{ padding: '24px 32px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+    <div className="dashboard-container" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       
       {/* Title Header */}
       <div>

@@ -41,7 +41,7 @@ const AlertHistory = () => {
   }
 
   return (
-    <div className="dashboard-container" style={{ padding: '24px 32px' }}>
+    <div className="dashboard-container">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
         <div>
           <h2><AlertTriangle className="text-gradient" size={24} style={{ verticalAlign: 'middle', marginRight: '8px' }} /> Past Alert History</h2>
