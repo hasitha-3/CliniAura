@@ -189,7 +189,7 @@ const CommandCentre = () => {
           </select>
         </div>
 
-          {user?.role !== 'NURSE' && (
+          {user?.role === 'DOCTOR' && (
             <button
               onClick={() => setShowMyPatientsOnly(!showMyPatientsOnly)}
               style={{

@@ -415,7 +415,7 @@ const SettingsPage = () => {
           )}
         </div>
 
-        {(user?.role === 'DOCTOR' || user?.role === 'ADMIN') && (
+        {['DOCTOR', 'ADMIN', 'NURSE'].includes(user?.role) && (
           <div style={{ borderTop: '1px solid var(--border)', marginTop: '30px', paddingTop: '20px' }}>
             <h3 style={{ fontSize: '1.1rem', marginBottom: '16px' }}>MedGemma AI Integration</h3>
             <div className="glass-panel" style={{ background: 'rgba(0, 212, 170, 0.05)', borderColor: 'var(--teal)' }}>
@@ -1279,7 +1279,8 @@ const PatientDashboard = () => {
     })
       .then(res => res.json())
       .then(data => {
-        const me = Array.isArray(data) ? data.find(p => p.username === user.username) : null;
+        // Robust fallback for older cached sessions missing user.username
+        const me = Array.isArray(data) ? (data.find(p => p.username === user?.username || p._id === user?.id) || data[0]) : null;
         if (me) setProfile(me);
       })
       .catch(() => {
@@ -1300,7 +1301,7 @@ const PatientDashboard = () => {
       fetch(`${API_URL}/api/patients`, { headers: { 'Authorization': `Bearer ${token}` } })
         .then(res => res.json())
         .then(data => {
-           const me = Array.isArray(data) ? data.find(p => p.username === user.username) : null;
+           const me = Array.isArray(data) ? (data.find(p => p.username === user?.username || p._id === user?.id) || data[0]) : null;
            if (me) {
              newSocket.emit('start_monitoring', me._id);
              newSocket.on('vitals_update', (socketData) => {
