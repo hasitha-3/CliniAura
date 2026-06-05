@@ -2,7 +2,7 @@ import React, { useState, useEffect, createContext, useContext } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import io from 'socket.io-client';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Activity, Heart, Wind, Droplet, AlertTriangle, LogOut, Shield, ShieldAlert, Stethoscope, User as UserIcon, ChevronDown, ChevronRight, CheckCircle, Info, Settings, FileText, Thermometer, Footprints, Accessibility } from 'lucide-react';
+import { Activity, Heart, Wind, Droplet, AlertTriangle, LogOut, Shield, ShieldAlert, Stethoscope, User as UserIcon, ChevronDown, ChevronRight, CheckCircle, Info, Settings, FileText, Thermometer, Footprints, Accessibility, Bell } from 'lucide-react';
 import { generateDummyPatients, generateDummyVitals, generateMedGemmaAlert } from './utils/dummyDataSimulator';
 import './index.css';
 
@@ -42,7 +42,13 @@ const AuthProvider = ({ children }) => {
       return { success: false, error: data.error || 'Invalid username or password' };
     } catch (err) {
       console.warn("Backend unavailable, falling back to dummy authentication.");
-      const demoUser = { id: 'dummy-admin', username, role: username.toLowerCase().includes('patient') ? 'PATIENT' : 'ADMIN', token: 'demo-token' };
+      let fallbackRole = 'ADMIN';
+      const lowerName = username.toLowerCase();
+      if (lowerName.includes('patient')) fallbackRole = 'PATIENT';
+      else if (lowerName.includes('nurse')) fallbackRole = 'NURSE';
+      else if (lowerName.includes('doctor')) fallbackRole = 'DOCTOR';
+
+      const demoUser = { id: 'dummy-admin', username, role: fallbackRole, token: 'demo-token' };
       localStorage.setItem('cliniaura_user', JSON.stringify(demoUser));
       setUser(demoUser);
       return { success: true, role: demoUser.role };
@@ -1293,7 +1299,7 @@ const PatientDashboard = () => {
     const newSocket = io(API_URL, { auth: { token, role: user?.role } });
     setSocket(newSocket);
     
-    if (user && user.role === 'PATIENT') {
+    if (user && user.role?.toUpperCase() === 'PATIENT') {
       const savedUser = JSON.parse(localStorage.getItem('cliniaura_user'));
       // Using username to map to ID since our in-memory DB uses 1, 2 etc. 
       // A quick fetch of me gets the id. 
@@ -1361,19 +1367,16 @@ const PatientDashboard = () => {
     <div style={{ animation: 'fade-up 0.3s ease' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
         <div>
-          <h2 style={{ margin: 0 }}>{profile ? `${profile.name} - Dashboard` : `${user.username}`}</h2>
+          <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '12px' }}>
+            {profile ? `${profile.name} - Dashboard` : `${user.username}`}
+            {profile && <span style={{ fontSize: '0.8rem', padding: '4px 12px', borderRadius: '100px', background: 'var(--surface2)', color: 'var(--text-dim)', border: '1px solid var(--border)', verticalAlign: 'middle', fontWeight: 'normal' }}>ID: {profile.patientId || 'Pending'}</span>}
+          </h2>
           {profile && (
-            <div style={{ fontSize: '0.85rem', color: 'var(--text-dim)', marginTop: '6px' }}>
-              <strong>ID:</strong> {profile.patientId || 'Pending'} &nbsp;|&nbsp; 
-              <strong>Age/Sex:</strong> {profile.age}{profile.gender ? ` / ${profile.gender}` : ''} &nbsp;|&nbsp; 
-              <strong>Diagnosis:</strong> {profile.primaryDiagnosis || 'Under Evaluation'}
-              
-              <div style={{ marginTop: '8px', display: 'flex', gap: '16px', flexWrap: 'wrap', color: 'var(--text-muted)' }}>
-                <span><strong>Admitted:</strong> {profile.admissionDate ? new Date(profile.admissionDate).toLocaleString() : '--'}</span>
-                <span><strong>Diagnosed:</strong> {profile.diagnosisDate ? new Date(profile.diagnosisDate).toLocaleString() : '--'}</span>
-                <span><strong>Nurse:</strong> {profile.assignedNurse || 'Unassigned'}</span>
-                <span><strong>Doctor:</strong> {profile.assignedDoctor || 'Unassigned'}</span>
-              </div>
+            <div style={{ marginTop: '12px', display: 'flex', gap: '16px', flexWrap: 'wrap', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+              <span><strong>Admitted:</strong> {profile.admissionDate ? new Date(profile.admissionDate).toLocaleString() : '--'}</span>
+              <span><strong>Diagnosed:</strong> {profile.diagnosisDate ? new Date(profile.diagnosisDate).toLocaleString() : '--'}</span>
+              <span><strong>Nurse:</strong> {profile.assignedNurse || 'Unassigned'}</span>
+              <span><strong>Doctor:</strong> {profile.assignedDoctor || 'Unassigned'}</span>
             </div>
           )}
         </div>
@@ -1404,6 +1407,27 @@ const PatientDashboard = () => {
         </div>
       </div>
       
+      {profile && (
+        <div className="glass-panel mb-4" style={{ padding: '20px', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem', background: 'rgba(0, 212, 170, 0.05)' }}>
+          <div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Age / Diagnosis</div>
+            <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--text)' }}>{profile.age} <span style={{fontSize: '0.75rem', fontWeight:'normal', color:'var(--text-muted)'}}>yrs</span> <span style={{color: 'var(--text-dim)', fontWeight: 'normal', margin: '0 8px'}}>|</span> {profile.primaryDiagnosis || 'Under Evaluation'}</div>
+          </div>
+          <div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Audited Protocol</div>
+            <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--teal)' }} className="truncate" title={profile.activeProtocol}>{profile.activeProtocol || 'Standard Care'}</div>
+          </div>
+          <div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Target MAP</div>
+            <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--cyan)' }}>{profile.targetMAP || '--'} <span style={{fontSize: '0.75rem', fontWeight:'normal', color:'var(--text-muted)'}}>mmHg</span></div>
+          </div>
+          <div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>HPI Status</div>
+            <div><span className={`badge-risk risk-${profile.riskScore}`} style={{ marginTop: '2px', display: 'inline-block' }}>{profile.riskScore || 'Unknown'} Risk</span></div>
+          </div>
+        </div>
+      )}
+
       {profile ? (
         <div className="grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
           
@@ -1533,13 +1557,13 @@ const DashboardRouter = () => {
       const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
       const token = JSON.parse(localStorage.getItem('cliniaura_user'))?.token;
       
-      if (user.role === 'PATIENT') {
+      if (user.role?.toUpperCase() === 'PATIENT') {
         fetch(`${API_URL}/api/patients`, {
           headers: { 'Authorization': `Bearer ${token}` }
         })
           .then(res => res.json())
           .then(data => {
-            const me = Array.isArray(data) ? data.find(p => p.username === user.username) : null;
+            const me = Array.isArray(data) ? (data.find(p => p.username === user.username || p._id === user.id) || data[0]) : null;
             if (me) setPersonalInfo(me);
           }).catch(console.error);
       } else {
@@ -1583,34 +1607,13 @@ const DashboardRouter = () => {
           </div>
         </div>
 
-        {personalInfo && user.role === 'PATIENT' && (
-          <div className="grid grid-cols-4 mt-4" style={{ borderTop: '1px solid rgba(0, 212, 170, 0.1)', paddingTop: '1.2rem', gap: '1rem' }}>
-            <div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Age Profile</div>
-              <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--text)' }}>{personalInfo.age} <span style={{fontSize: '0.75rem', fontWeight:'normal', color:'var(--text-muted)'}}>yrs</span></div>
-            </div>
-            <div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Audited Protocol</div>
-              <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--teal)' }} className="truncate" title={personalInfo.activeProtocol}>{personalInfo.activeProtocol}</div>
-            </div>
-            <div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Target MAP</div>
-              <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--cyan)' }}>{personalInfo.targetMAP} <span style={{fontSize: '0.75rem', fontWeight:'normal', color:'var(--text-muted)'}}>mmHg</span></div>
-            </div>
-            <div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>HPI Status</div>
-              <div><span className={`badge-risk risk-${personalInfo.riskScore}`} style={{ marginTop: '2px', display: 'inline-block' }}>{personalInfo.riskScore} Risk</span></div>
-            </div>
-          </div>
-        )}
-
 
       </div>
 
       {/* Embedded Component Interfaces */}
-      {user.role === 'ADMIN' && <AdminDashboard />}
-      {(user.role === 'DOCTOR' || user.role === 'NURSE') && <DoctorDashboard />}
-      {user.role === 'PATIENT' && <PatientDashboard />}
+      {user.role?.toUpperCase() === 'ADMIN' && <AdminDashboard />}
+      {(user.role?.toUpperCase() === 'DOCTOR' || user.role?.toUpperCase() === 'NURSE') && <DoctorDashboard />}
+      {user.role?.toUpperCase() === 'PATIENT' && <PatientDashboard />}
     </div>
   );
 };

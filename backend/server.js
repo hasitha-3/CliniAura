@@ -163,7 +163,7 @@ app.put('/api/patients/:id/assign', (req, res) => {
 });
 
 app.get('/api/patients', (req, res) => {
-  let safePatients = USERS.filter(u => u.role === 'PATIENT').map(u => { const { password, ...rest } = u; return rest; });
+  let safePatients = USERS.filter(u => u.role?.toUpperCase() === 'PATIENT').map(u => { const { password, ...rest } = u; return rest; });
   
   if (req.user && req.user.role === 'NURSE') {
     const nurse = USERS.find(u => u._id === req.user.id);

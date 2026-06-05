@@ -108,8 +108,8 @@ const CommandCentre = () => {
   const [showMyPatientsOnly, setShowMyPatientsOnly] = useState(false);
 
   const filteredPatients = patients.filter(pt => {
-    const matchesWard = selectedWard === 'ALL' || pt.ward === selectedWard;
-    const matchesRisk = selectedRisk === 'ALL' || pt.riskScore === selectedRisk;
+    const matchesWard = selectedWard === 'All' || pt.ward === selectedWard || selectedWard === 'ALL';
+    const matchesRisk = selectedRisk === 'All' || pt.riskScore === selectedRisk || selectedRisk === 'ALL';
     const matchesSearch = !searchTerm || 
       pt.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (pt.activeProtocol && pt.activeProtocol.toLowerCase().includes(searchTerm.toLowerCase()));

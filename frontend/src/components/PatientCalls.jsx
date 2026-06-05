@@ -49,7 +49,8 @@ const PatientCalls = ({ role, username }) => {
 
   const activeCalls = calls.filter(c => c.status === 'Active');
 
-  if (role !== 'NURSE' && role !== 'DOCTOR' && role !== 'ADMIN') return null;
+  const normalizedRole = role?.toUpperCase();
+  if (normalizedRole !== 'NURSE' && normalizedRole !== 'DOCTOR' && normalizedRole !== 'ADMIN') return null;
 
   return (
     <div className="glass-panel" style={{ padding: '16px', marginBottom: '24px' }}>
@@ -75,7 +76,7 @@ const PatientCalls = ({ role, username }) => {
                   <div style={{ fontWeight: 'bold', color: 'var(--text)' }}>Patient Request: {call.patientName}</div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{new Date(call.timestamp).toLocaleTimeString()}</div>
                 </div>
-                {role === 'NURSE' && (
+                {normalizedRole === 'NURSE' && (
                   <button onClick={() => handleResolve(call.id)} className="btn" style={{ background: 'var(--teal)', color: 'var(--bg)', border: 'none', padding: '4px 12px', fontSize: '0.75rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
                     <Check size={14} /> Resolve
                   </button>
@@ -101,7 +102,7 @@ const PatientCalls = ({ role, username }) => {
                     <div style={{ fontSize: '0.8rem', color: call.notes ? 'var(--text)' : 'var(--text-muted)' }}>
                       {call.notes ? `Note: ${call.notes}` : 'No notes added.'}
                     </div>
-                    {role === 'NURSE' && (
+                    {normalizedRole === 'NURSE' && (
                       <button onClick={() => { setEditingId(call.id); setTempNotes(call.notes || ''); }} style={{ background: 'transparent', border: 'none', color: 'var(--text-dim)', cursor: 'pointer' }}>
                         <Edit2 size={12} />
                       </button>
