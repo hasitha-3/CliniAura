@@ -16,8 +16,8 @@ const CommandCentre = () => {
   const [error, setError] = useState(null);
 
   // Advanced Filtering & Search States
-  const [selectedWard, setSelectedWard] = useState('ALL');
-  const [selectedRisk, setSelectedRisk] = useState('ALL');
+  const [selectedWard, setSelectedWard] = useState('All');
+  const [selectedRisk, setSelectedRisk] = useState('All');
   const [searchTerm, setSearchTerm] = useState('');
   
   // Interactive Action Feedback State (patientId -> message)
@@ -51,22 +51,54 @@ const CommandCentre = () => {
         setPatients(dummyPts);
         setLoading(false);
         
-        window.lastDummyVitals = {};
-        const intervalId = setInterval(() => {
-          dummyPts.forEach(p => {
-            const vitals = generateDummyVitals(p._id, window.lastDummyVitals[p._id]);
-            window.lastDummyVitals[p._id] = vitals;
-            updateVitals(p._id, vitals, null);
+        // Dummy interval fallback logic has been disabled here since Nano is the source of truth
+      });
+
+    // --- NEW: Jetson Nano Edge API Polling (Always runs) ---
+    const NANO_API = 'http://100.104.109.66:5000/dashboard/live';
+    const nanoIntervalId = setInterval(async () => {
+      try {
+        const nanoRes = await fetch(NANO_API);
+        if (nanoRes.ok) {
+          const liveData = await nanoRes.json();
+          
+          liveData.forEach(pData => {
+            const vitals = {
+              respirationRate: pData.respiration_rate || 16,
+              heartRate: pData.heart_rate,
+              bloodPressureSys: pData.systolic_bp,
+              bloodPressureDia: pData.diastolic_bp,
+              spO2: pData.spo2,
+              temperature: 36.8,
+              posture: 'Supine',
+              steps: 0,
+              fallDetected: false,
+              ecgAnomaly: false,
+            };
             
-            const alert = generateMedGemmaAlert(p._id, vitals);
-            if (alert && Math.random() > 0.8) {
-              updateVitals(p._id, null, alert.message);
+            let alertMsg = null;
+            if (pData.alerts && pData.alerts.length > 0) {
+              const latestAlert = pData.alerts[0];
+              alertMsg = `${latestAlert.severity.toUpperCase()}: ${latestAlert.reason}`;
+            }
+            
+            updateVitals(pData.patient_id, vitals, alertMsg);
+            
+            if (pData.assessment) {
+              setPatients(prevPts => prevPts.map(pt => 
+                pt.username === pData.patient_id || pt._id === pData.patient_id 
+                  ? { ...pt, nanoAssessment: pData.assessment } 
+                  : pt
+              ));
             }
           });
-        }, 2500);
-        
-        window.dummyIntervalId = intervalId;
-      });
+        }
+      } catch (e) {
+        // Silently ignore connection errors to edge device
+      }
+    }, 2000);
+    
+    window.dummyIntervalId = nanoIntervalId;
 
     const socket = io(API_URL, { auth: { token, role: user?.role } });
     
@@ -108,8 +140,8 @@ const CommandCentre = () => {
   const [showMyPatientsOnly, setShowMyPatientsOnly] = useState(false);
 
   const filteredPatients = patients.filter(pt => {
-    const matchesWard = selectedWard === 'All' || pt.ward === selectedWard || selectedWard === 'ALL';
-    const matchesRisk = selectedRisk === 'All' || pt.riskScore === selectedRisk || selectedRisk === 'ALL';
+    const matchesWard = selectedWard === 'All' || pt.ward === selectedWard;
+    const matchesRisk = selectedRisk === 'All' || pt.riskScore === selectedRisk;
     const matchesSearch = !searchTerm || 
       pt.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (pt.activeProtocol && pt.activeProtocol.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -123,7 +155,7 @@ const CommandCentre = () => {
     return matchesWard && matchesRisk && matchesSearch && matchesMyPatients;
   });
 
-  const wards = ['All', 'ICU', 'Step-down Unit', 'General Ward'];
+  const wards = ['All', 'ICU', 'Emergency', 'Cardiology', 'General'];
   const risks = ['All', 'Critical', 'High', 'Medium', 'Moderate', 'Low'];
 
   if (loading) {
@@ -264,8 +296,10 @@ const CommandCentre = () => {
               {activeAlerts.map(alert => {
                 const pt = patients.find(p => p._id === alert.patientId);
                 return (
-                  <div key={alert.id} style={{ background: 'rgba(255, 77, 106, 0.06)', border: '1px solid rgba(255, 77, 106, 0.3)', padding: '12px', borderRadius: '12px' }}>
-                    <div style={{ fontSize: '0.9rem', fontWeight: 'bold' }}>{pt?.username || 'Unknown'}</div>
+                  <div key={alert.id} style={{ background: 'rgba(255, 77, 106, 0.06)', border: '1px solid rgba(255, 77, 106, 0.3)', padding: '12px', borderRadius: '12px', animation: 'fade-up 0.3s ease-out' }}>
+                    <div style={{ fontSize: '0.9rem', fontWeight: 'bold' }}>
+                      {pt?.name || 'Unknown Patient'} <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>({pt?.patientId || alert.patient_id})</span>
+                    </div>
                     <div style={{ fontSize: '0.8rem', color: '#ff8093' }}>{alert.message}</div>
                     <button onClick={() => acknowledgeAlert(alert.id)} style={{ marginTop: '8px', width: '100%', fontSize: '0.75rem', background: '#ff4d6a', color: 'white', border: 'none', padding: '4px', borderRadius: '4px', cursor: 'pointer' }}>Acknowledge</button>
                   </div>
@@ -302,6 +336,7 @@ const CommandCentre = () => {
                 const bedData = beds.find(b => b.patientId === pt._id);
                 const v = bedData?.latestVitals;
                 const isCritical = activeAlerts.some(a => a.patientId === pt._id);
+                const dynamicRiskScore = isCritical ? 'CRITICAL' : (pt.riskScore || 'LOW');
                 const feedback = actionFeedback[pt._id];
 
                 // Calculate history trends safely
@@ -343,7 +378,7 @@ const CommandCentre = () => {
                             {pt.ward || 'General Ward'}
                           </span>
                         </div>
-                        <span className={`badge-risk risk-${pt.riskScore}`}>{pt.riskScore}</span>
+                          <span className={`badge-risk risk-${dynamicRiskScore}`}>{dynamicRiskScore}</span>
                       </div>
                       
                       {/* Clinical Demographics */}
@@ -401,7 +436,7 @@ const CommandCentre = () => {
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px', marginBottom: '16px', background: 'var(--bg2)', padding: '6px', borderRadius: '10px', border: '1px solid rgba(0,212,170,0.05)' }}>
                         <div style={{ textAlign: 'center' }}>
                           <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Resp</div>
-                          <div style={{ fontSize: '1rem', fontWeight: 'bold', color: 'var(--text)' }}>
+                          <div style={{ fontSize: '1rem', fontWeight: 'bold', color: (v?.respirationRate < 12 || v?.respirationRate > 20) ? '#ff4d6a' : 'var(--text)' }}>
                             {v?.respirationRate || '--'}
                           </div>
                         </div>
@@ -424,33 +459,15 @@ const CommandCentre = () => {
                           </div>
                         </div>
                       </div>
-
-                      {/* Active Audited Protocol */}
-                      {pt.activeProtocol && (
-                        <div style={{ fontSize: '0.8rem', color: 'var(--teal-dim)', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '12px' }}>
-                          <Stethoscope size={13} style={{ flexShrink: 0 }} />
-                          <span className="truncate" title={pt.activeProtocol}>Protocol: {pt.activeProtocol}</span>
+                      
+                      {/* AI ASSISTANT PANEL */}
+                      <div className="glass-panel" style={{ padding: '12px', display: 'flex', flexDirection: 'column', marginBottom: '12px', background: 'var(--surface2)', border: '1px solid var(--border)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', color: 'var(--teal)', fontSize: '0.85rem', fontWeight: 'bold' }}>
+                          <Zap size={14} /> Edge AI Assessment
                         </div>
-                      )}
-
-                      {/* Inline Sparkline Graphic */}
-                      <div style={{ height: '35px', width: '100%', marginBottom: '12px' }}>
-                        {sparkData.length > 1 ? (
-                          <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={sparkData}>
-                              <YAxis domain={['dataMin - 5', 'dataMax + 5']} hide />
-                              <Tooltip 
-                                contentStyle={{ background: '#050a10', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.75rem', padding: '2px 6px' }} 
-                                labelStyle={{display:'none'}}
-                              />
-                              <Line type="monotone" dataKey="val" stroke={isCritical ? '#ff4d6a' : 'var(--cyan)'} strokeWidth={2} dot={false} isAnimationActive={false} />
-                            </LineChart>
-                          </ResponsiveContainer>
-                        ) : (
-                          <div style={{ fontSize:'0.7rem', color:'var(--text-muted)', textAlign:'center', lineHeight:'35px' }}>
-                            Collecting edge points...
-                          </div>
-                        )}
+                        <div style={{ background: 'var(--bg)', padding: '10px', borderRadius: '6px', fontSize: '0.8rem', lineHeight: '1.4', color: 'var(--text-dim)', flex: 1, overflowY: 'auto', maxHeight: '100px' }}>
+                          {pt.nanoAssessment ? pt.nanoAssessment : "Stable telemetry stream. No acute intervention required at this moment."}
+                        </div>
                       </div>
                     </div>
 

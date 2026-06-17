@@ -5,6 +5,7 @@ import { AlertTriangle, Clock, Activity, FileText } from 'lucide-react';
 const AlertHistory = () => {
   const { user } = useContext(AuthContext);
   const [alerts, setAlerts] = useState([]);
+  const [patients, setPatients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -14,15 +15,29 @@ const AlertHistory = () => {
         const apiKey = localStorage.getItem('medgemma_api_key') || '';
         const token = JSON.parse(localStorage.getItem('cliniaura_user'))?.token || '';
         
-        // Fetch from MedGemma Agent
-        const res = await fetch('http://localhost:8000/api/v1/alerts?limit=50', {
+        const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+        
+        // Fetch patients to map names
+        const ptRes = await fetch(`${API_URL}/api/patients`, {
           headers: {
-            'X-API-Key': apiKey,
             'Authorization': `Bearer ${token}`
           }
         });
         
-        if (!res.ok) throw new Error('Failed to fetch alerts from MedGemma Agent');
+        let pts = [];
+        if (ptRes.ok) {
+          pts = await ptRes.json();
+          setPatients(pts);
+        }
+
+        // Fetch from Jetson Nano Edge API
+        const res = await fetch('http://100.104.109.66:5000/alerts', {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        
+        if (!res.ok) throw new Error('Failed to fetch alerts from Nano Edge Device');
         
         const data = await res.json();
         setAlerts(data || []);
@@ -68,13 +83,15 @@ const AlertHistory = () => {
             </tr>
           </thead>
           <tbody>
-            {alerts.map((alert) => (
+            {alerts.map((alert) => {
+              const pt = patients.find(p => p._id === alert.patient_id);
+              return (
               <tr key={alert.alert_id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
                 <td style={{ padding: '14px 18px', color: 'var(--text-dim)' }}>
                   {new Date(alert.created_at).toLocaleString()}
                 </td>
                 <td style={{ padding: '14px 18px', fontWeight: '500' }}>
-                  {alert.patient_id}
+                  {pt?.name || 'Unknown Patient'} <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>({pt?.patientId || alert.patient_id})</span>
                 </td>
                 <td style={{ padding: '14px 18px' }}>
                   <span className={`badge-risk risk-${alert.alert_level}`}>{alert.alert_level}</span>
@@ -86,7 +103,8 @@ const AlertHistory = () => {
                   {alert.recommended_action || '--'}
                 </td>
               </tr>
-            ))}
+              );
+            })}
             {alerts.length === 0 && !error && (
               <tr>
                 <td colSpan="5" style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>

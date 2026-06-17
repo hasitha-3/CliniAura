@@ -27,12 +27,16 @@ const AuthProvider = ({ children }) => {
   const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
 
   const login = async (username, password) => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
     try {
       const res = await fetch(`${API_URL}/api/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password })
+        body: JSON.stringify({ username, password }),
+        signal: controller.signal
       });
+      clearTimeout(timeoutId);
       const data = await res.json();
       if (res.ok) {
         localStorage.setItem('cliniaura_user', JSON.stringify(data));
@@ -41,6 +45,7 @@ const AuthProvider = ({ children }) => {
       }
       return { success: false, error: data.error || 'Invalid username or password' };
     } catch (err) {
+      clearTimeout(timeoutId);
       console.warn("Backend unavailable, falling back to dummy authentication.");
       let fallbackRole = 'ADMIN';
       const lowerName = username.toLowerCase();
@@ -147,7 +152,6 @@ const Navbar = () => {
           <a href="#solution" onClick={(e) => handleNavClick(e, '#solution')}>Solution</a>
           <a href="#technology" onClick={(e) => handleNavClick(e, '#technology')}>Technology</a>
           <a href="#team" onClick={(e) => handleNavClick(e, '#team')}>Team</a>
-          <a href="#roadmap" onClick={(e) => handleNavClick(e, '#roadmap')}>Roadmap</a>
           <a href="#contact" onClick={(e) => handleNavClick(e, '#contact')} className="nav-cta">Get in Touch</a>
         </div>
       )}
@@ -237,7 +241,7 @@ const SettingsPage = () => {
   // Fetch MedGemma Health Status
   useEffect(() => {
     if (user?.role === 'DOCTOR' || user?.role === 'ADMIN') {
-      fetch('http://localhost:8000/api/v1/health')
+      fetch('http://100.104.109.66:5000/health')
         .then(res => res.json())
         .then(data => setHealth(data))
         .catch(() => setHealth({ status: 'unreachable' }));
@@ -672,15 +676,9 @@ const AdminDashboard = () => {
   const filteredUsers = users.filter(u => {
     const matchesSearch = !searchTerm || u.username.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesRole = selectedRole === 'ALL' || u.role === selectedRole;
-    
-    // Additional Patient Filters
-    if (u.role === 'PATIENT') {
-      const matchesWard = selectedWard === 'ALL' || u.ward === selectedWard;
-      const matchesRisk = selectedRisk === 'ALL' || u.riskScore === selectedRisk;
-      return matchesSearch && matchesRole && matchesWard && matchesRisk;
-    }
-    
-    return matchesSearch && matchesRole;
+    const matchesWard = selectedWard === 'ALL' || u.ward === selectedWard;
+    const matchesRisk = selectedRisk === 'ALL' || u.riskScore === selectedRisk;
+    return matchesSearch && matchesRole && matchesWard && matchesRisk;
   }).sort((a, b) => {
     if (a.role === 'PATIENT' && b.role === 'PATIENT' && a.admissionDate && b.admissionDate) {
       return sortOrder === 'DESC' ? new Date(b.admissionDate) - new Date(a.admissionDate) : new Date(a.admissionDate) - new Date(b.admissionDate);
@@ -1048,18 +1046,43 @@ const DoctorDashboard = () => {
         socket.on('vitals_update', handleVitals);
       }
       
-      // Setup demo interval if backend is unavailable
-      if (!socket || !socket.connected) {
-         if (window.doctorDemoInterval) clearInterval(window.doctorDemoInterval);
-         window.lastDocVitals = null;
-         window.doctorDemoInterval = setInterval(() => {
-           const vitals = generateDummyVitals(selectedPatient._id, window.lastDocVitals);
-           window.lastDocVitals = vitals;
-           setVitalsData(prev => [...prev, vitals].slice(-20));
-           const al = generateMedGemmaAlert(selectedPatient._id, vitals);
-           if (al) setAlert(al.message);
-         }, 3000);
-      }
+      // Continuously poll the Jetson Nano Edge API for live telemetry
+      if (window.doctorDemoInterval) clearInterval(window.doctorDemoInterval);
+      window.doctorDemoInterval = setInterval(async () => {
+        try {
+          const nanoRes = await fetch('http://100.104.109.66:5000/dashboard/live');
+          if (nanoRes.ok) {
+            const liveData = await nanoRes.json();
+            const myData = liveData.find(d => d.patient_id === selectedPatient._id || d.patient_id === selectedPatient.username);
+            
+            if (myData) {
+              const vitals = {
+                respirationRate: myData.respiration_rate || 16,
+                heartRate: myData.heart_rate,
+                bloodPressureSys: myData.systolic_bp,
+                bloodPressureDia: myData.diastolic_bp,
+                spO2: myData.spo2,
+                temperature: 36.8,
+                posture: 'Supine',
+                steps: 0,
+                fallDetected: false,
+                ecgAnomaly: false,
+                timestamp: new Date()
+              };
+              
+              setVitalsData(prev => [...prev, vitals].slice(-20));
+              
+              if (myData.alerts && myData.alerts.length > 0) {
+                setAlert(myData.alerts[0].reason);
+              } else {
+                setAlert(null);
+              }
+            }
+          }
+        } catch (e) {
+          // Silently ignore connection errors
+        }
+      }, 2000);
     }
     return () => {
        if (socket) socket.off('vitals_update', handleVitals);
@@ -1085,6 +1108,9 @@ const DoctorDashboard = () => {
     const matchesMyPatients = !isMyPatientsView || p.assignedNurse === user?.username || p.assignedDoctor === user?.username;
     const matchesWard = selectedWard === 'ALL' || p.ward === selectedWard;
     const matchesRisk = selectedRisk === 'ALL' || p.riskScore === selectedRisk;
+    
+    console.log("Patient filter check:", p.username, { isMyPatientsView, matchesMyPatients, matchesWard, matchesRisk, assignedDoctor: p.assignedDoctor, username: user?.username });
+
     return matchesSearch && matchesMyPatients && matchesWard && matchesRisk;
   }).sort((a, b) => {
     if (a.admissionDate && b.admissionDate) {
@@ -1328,12 +1354,33 @@ const PatientDashboard = () => {
                    const firstDummy = generateDummyVitals(me._id, window.lastPatVitals);
                    window.lastPatVitals = firstDummy;
                    
-                   window.patientDemoInterval = setInterval(() => {
-                     const dummy = generateDummyVitals(me._id, window.lastPatVitals);
-                     window.lastPatVitals = dummy;
-                     setLatestVitals(dummy);
+                   // Fallback to Jetson Nano Edge Polling
+                   window.patientDemoInterval = setInterval(async () => {
+                     try {
+                       const nanoRes = await fetch('http://100.104.109.66:5000/dashboard/live');
+                       if (nanoRes.ok) {
+                         const liveData = await nanoRes.json();
+                         const myData = liveData.find(d => d.patient_id === me._id || d.patient_id === me.username);
+                         if (myData) {
+                           setLatestVitals({
+                             respirationRate: myData.respiration_rate || 16,
+                             heartRate: myData.heart_rate,
+                             bloodPressureSys: myData.systolic_bp,
+                             bloodPressureDia: myData.diastolic_bp,
+                             spO2: myData.spo2,
+                             temperature: 36.8,
+                             posture: 'Supine',
+                             steps: 0,
+                             fallDetected: false,
+                             ecgAnomaly: false
+                           });
+                           return; // Skip dummy if Nano succeeds
+                         }
+                       }
+                     } catch (e) {
+                       // Silently ignore errors
+                     }
                    }, 3000);
-                   
                    return firstDummy;
                  }
                  return current;
@@ -1431,14 +1478,20 @@ const PatientDashboard = () => {
       {profile ? (
         <div className="grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
           
-          <div className="glass-panel vital-card" style={{ padding: '20px', background: 'rgba(185, 28, 28, 0.2)', borderColor: 'rgba(239, 68, 68, 0.4)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#fca5a5', fontSize: '0.8rem', textTransform: 'uppercase' }}>
-              <Wind size={18} color="#f87171" /> Respiration
+          <div className="glass-panel vital-card" style={{ padding: '20px', 
+              background: (latestVitals?.respirationRate < 12 || latestVitals?.respirationRate > 20) ? 'rgba(185, 28, 28, 0.2)' : 'rgba(16, 185, 129, 0.15)', 
+              borderColor: (latestVitals?.respirationRate < 12 || latestVitals?.respirationRate > 20) ? 'rgba(239, 68, 68, 0.4)' : 'rgba(52, 211, 153, 0.3)' 
+            }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', 
+                color: (latestVitals?.respirationRate < 12 || latestVitals?.respirationRate > 20) ? '#fca5a5' : '#6ee7b7', 
+                fontSize: '0.8rem', textTransform: 'uppercase' 
+              }}>
+              <Wind size={18} color={(latestVitals?.respirationRate < 12 || latestVitals?.respirationRate > 20) ? '#f87171' : '#34d399'} /> Respiration
             </div>
             <div className="vital-value" style={{ margin: '15px 0 5px 0', fontSize: '3rem', color: '#fff', fontWeight: 'bold' }}>
               {latestVitals?.respirationRate || '--'}
             </div>
-            <div style={{ color: '#fca5a5', fontSize: '0.85rem' }}>BrPM</div>
+            <div style={{ color: (latestVitals?.respirationRate < 12 || latestVitals?.respirationRate > 20) ? '#fca5a5' : '#6ee7b7', fontSize: '0.85rem' }}>BrPM</div>
           </div>
 
           <div className="glass-panel vital-card" style={{ padding: '20px', background: 'rgba(14, 165, 233, 0.15)', borderColor: 'rgba(56, 189, 248, 0.3)' }}>

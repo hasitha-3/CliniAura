@@ -47,7 +47,6 @@ const JWT_SECRET = 'supersecret_cliniaura';
 
 // --- In-Memory Data Store ---
 let USERS = [];
-let AUDIT_LEDGER = [];
 let ALARM_EVENTS = [];
 
 // Seed Data Initialization
@@ -69,25 +68,25 @@ const initializeSeedData = () => {
       ward: 'Step-down Unit', assignedNurse: 'testnurse1', assignedDoctor: 'testdoctor1', admissionDate: '2026-06-03T14:20:00Z', diagnosisDate: '2026-06-03T15:00:00Z', deviceType: 'VitalPatch', batteryLevel: 80, signalQualityIndex: 90, auditLogs: []
     },
     {
-      _id: 'dummy-patient-3', patientId: 'CLA-2026-00003', username: 'RJones_G11', password: patientPass, role: 'PATIENT', name: 'Rajesh Jones', email: 'rjones@cliniaura.test', age: 55, gender: 'Male', primaryDiagnosis: 'Pneumonia',
+      _id: '3', patientId: 'CLA-2026-00003', username: 'RJones_G11', password: patientPass, role: 'PATIENT', name: 'Rajesh Jones', email: 'rjones@cliniaura.test', age: 55, gender: 'Male', primaryDiagnosis: 'Pneumonia',
       riskScore: 'Moderate', activeProtocol: 'Respiratory Support', targetMAP: 70, baselineCO: 5.0, baselineSV: 70,
       ward: 'General Ward', assignedNurse: 'testnurse2', assignedDoctor: 'testdoctor2', admissionDate: '2026-06-04T09:10:00Z', diagnosisDate: '2026-06-04T11:45:00Z', deviceType: 'Standard Monitor', batteryLevel: 100, signalQualityIndex: 100, auditLogs: []
     },
     {
-      _id: 'dummy-patient-4', patientId: 'CLA-2026-00004', username: 'MWilliams_W2', password: patientPass, role: 'PATIENT', name: 'Maria Williams', email: 'mwilliams@cliniaura.test', age: 71, gender: 'Female', primaryDiagnosis: 'Renal Failure',
+      _id: '4', patientId: 'CLA-2026-00004', username: 'MWilliams_W2', password: patientPass, role: 'PATIENT', name: 'Maria Williams', email: 'mwilliams@cliniaura.test', age: 71, gender: 'Female', primaryDiagnosis: 'Renal Failure',
       riskScore: 'Medium', activeProtocol: 'Fluid Resuscitation', targetMAP: 75, baselineCO: 4.2, baselineSV: 58,
       ward: 'ICU', assignedNurse: 'testnurse2', assignedDoctor: 'testdoctor1', admissionDate: '2026-06-02T18:00:00Z', diagnosisDate: '2026-06-03T09:30:00Z', deviceType: 'VitalPatch', batteryLevel: 65, signalQualityIndex: 85, auditLogs: []
     },
     {
-      _id: '6', patientId: 'CLA-2026-00005', username: 'ASmith_S4', password: patientPass, role: 'PATIENT', name: 'Alex Smith', email: 'asmith@cliniaura.test', age: 29, gender: 'Male', primaryDiagnosis: 'Post-op Recovery',
+      _id: '5', patientId: 'CLA-2026-00005', username: 'ASmith_S4', password: patientPass, role: 'PATIENT', name: 'Alex Smith', email: 'asmith@cliniaura.test', age: 29, gender: 'Male', primaryDiagnosis: 'Post-op Recovery',
       riskScore: 'Low', activeProtocol: 'Standard Observation', targetMAP: 80, baselineCO: 5.5, baselineSV: 75,
       ward: 'General Ward', assignedNurse: 'testnurse1', assignedDoctor: 'testdoctor2', admissionDate: '2026-06-04T07:00:00Z', diagnosisDate: '2026-06-04T08:00:00Z', deviceType: 'Basic Telemetry', batteryLevel: 90, signalQualityIndex: 99, auditLogs: []
     },
-    { _id: '3', username: 'testdoctor1', password: doctorPass, role: 'DOCTOR', name: 'Dr. Sarah Chen', specialty: 'Cardiology', shift: 'Morning' },
+    { _id: '6', username: 'testdoctor1', password: doctorPass, role: 'DOCTOR', name: 'Dr. Sarah Chen', specialty: 'Cardiology', shift: 'Morning' },
     { _id: '7', username: 'testdoctor2', password: doctorPass, role: 'DOCTOR', name: 'Dr. Marcus Webb', specialty: 'Pulmonology', shift: 'Night' },
-    { _id: '4', username: 'testadmin1', password: adminPass, role: 'ADMIN', name: 'System Admin' },
-    { _id: '5', username: 'testnurse1', password: nursePass, role: 'NURSE', name: 'Nurse Joy', shift: 'Morning' },
-    { _id: '8', username: 'testnurse2', password: nursePass, role: 'NURSE', name: 'Nurse David', shift: 'Night' }
+    { _id: '8', username: 'testadmin1', password: adminPass, role: 'ADMIN', name: 'System Admin' },
+    { _id: '9', username: 'testnurse1', password: nursePass, role: 'NURSE', name: 'Nurse Joy', shift: 'Morning' },
+    { _id: '10', username: 'testnurse2', password: nursePass, role: 'NURSE', name: 'Nurse David', shift: 'Night' }
   ];
   console.log('In-memory database initialized with seed data.');
 };
@@ -219,11 +218,13 @@ app.put('/api/users/:id/password', async (req, res) => {
 
 // --- Audit API Routes ---
 app.get('/api/audit/report', (req, res) => {
-  res.json(AUDIT_LEDGER.slice(0, 100));
+  const { getAuditLedger } = require('./services/audit-logger');
+  res.json(getAuditLedger().slice(0, 100));
 });
 
-app.get('/api/audit/verify', (req, res) => {
-  res.json({ status: 'verified', signature: 'in-memory-mock' });
+app.get('/api/audit/verify', async (req, res) => {
+  const verifyRes = await AuditLogger.verify();
+  res.json(verifyRes);
 });
 
 app.get('/api/audit/generate-pdf', async (req, res) => {
@@ -340,7 +341,7 @@ app.post('/api/ehr/upload', upload.single('file'), async (req, res) => {
       const apiKey = req.headers['x-api-key'] || 'dev-key-123';
       const token = req.headers.authorization ? req.headers.authorization.split(' ')[1] : 'clinician_token';
 
-      const agentRes = await fetch('http://127.0.0.1:8000/api/v1/ehr/ingest', {
+      const agentRes = await fetch('http://100.104.109.66:8000/api/v1/ehr/ingest', {
         method: 'POST',
         headers: {
           'X-API-Key': apiKey,
@@ -403,7 +404,7 @@ app.post('/api/abg/upload', upload.single('file'), async (req, res) => {
     const apiKey = req.headers['x-api-key'] || 'dev-key-123';
     const token = req.headers.authorization ? req.headers.authorization.split(' ')[1] : 'clinician_token';
 
-    const agentRes = await fetch('http://127.0.0.1:8000/api/v1/abg/upload', {
+    const agentRes = await fetch('http://100.104.109.66:8000/api/v1/abg/upload', {
       method: 'POST',
       headers: {
         'X-API-Key': apiKey,
@@ -430,7 +431,7 @@ app.post('/api/abg/analyze', async (req, res) => {
     const apiKey = req.headers['x-api-key'] || 'dev-key-123';
     const token = req.headers.authorization ? req.headers.authorization.split(' ')[1] : 'clinician_token';
 
-    const agentRes = await fetch('http://127.0.0.1:8000/api/v1/abg/analyze', {
+    const agentRes = await fetch('http://100.104.109.66:8000/api/v1/abg/analyze', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -550,5 +551,9 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server running on port ${PORT} (In-Memory Database Mode)`);
+  console.log(`CliniAura Main Server running on port ${PORT}`);
+  // Seed Audit Ledger with a couple of mock events to demonstrate functionality
+  AuditLogger.log('SYSTEM_STARTUP', 'SYSTEM', 'SYSTEM', { status: 'OK', message: 'Cryptographic ledger initialized' });
+  AuditLogger.log('PATIENT_ADMISSION', 'CLA-2026-00001', 'admin_1', { ward: 'ICU', protocol: 'Sepsis Resuscitation' });
+  AuditLogger.log('VITAL_ANOMALY', 'CLA-2026-00001', 'SYSTEM', { sensor: 'HeartRate', value: 220, severity: 'CRITICAL' });
 });

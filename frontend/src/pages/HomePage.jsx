@@ -386,45 +386,7 @@ const HomePage = () => {
         </div>
       </section>
 
-      {/* ROADMAP */}
-      <section className="roadmap" id="roadmap">
-        <div style={{ textAlign: 'center' }}>
-          <div className="section-label">Product Roadmap</div>
-          <div className="section-title" style={{ margin: '0 auto' }}>18 months from <em>validation to scale</em></div>
-        </div>
-        <div className="timeline">
-          <div className="tl-item animate">
-            <div className="tl-dot"></div>
-            <div className="tl-phase">Months 0–3</div>
-            <h4>Clinical Validation &amp; Hardening</h4>
-            <p>Validate core algorithms with clinical feedback, optimise edge AI models for real-time performance, and pilot testing in ICU and post-operative units.</p>
-          </div>
-          <div className="tl-item animate">
-            <div className="tl-dot"></div>
-            <div className="tl-phase">Months 3–6</div>
-            <h4>Pilot Expansion &amp; Evidence Generation</h4>
-            <p>Expand pilots across multiple wards, measure outcomes including response time and alarm reliability, and prepare clinical and operational evidence.</p>
-          </div>
-          <div className="tl-item animate">
-            <div className="tl-dot"></div>
-            <div className="tl-phase">Months 6–9</div>
-            <h4>Early Adoption</h4>
-            <p>Transition to commercialisation with early B2B hospital partnerships, finalise regulatory and compliance groundwork, and first commercial deployments.</p>
-          </div>
-          <div className="tl-item animate">
-            <div className="tl-dot"></div>
-            <div className="tl-phase">Months 9–12</div>
-            <h4>Revenue &amp; Product</h4>
-            <p>Convert pilots to paid contracts, streamline onboarding and deployment workflows, and prepare value-ready product documentation.</p>
-          </div>
-          <div className="tl-item animate">
-            <div className="tl-dot"></div>
-            <div className="tl-phase">Months 12–18</div>
-            <h4>Scale &amp; Platform Expansion</h4>
-            <p>Deploy in step-down units and high-risk wards, multi-ward analytics dashboards, and explore international pilots with BMC focus.</p>
-          </div>
-        </div>
-      </section>
+
 
       {/* VISION QUOTE */}
       <section className="vision">
@@ -461,7 +423,6 @@ const HomePage = () => {
             <h5>Product</h5>
             <a href="#solution" onClick={(e) => scrollToSection(e, '#solution')}>How It Works</a>
             <a href="#technology" onClick={(e) => scrollToSection(e, '#technology')}>Technology</a>
-            <a href="#roadmap" onClick={(e) => scrollToSection(e, '#roadmap')}>Roadmap</a>
           </div>
           <div className="footer-col">
             <h5>Company</h5>

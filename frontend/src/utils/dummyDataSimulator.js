@@ -2,84 +2,109 @@
 
 export const generateDummyPatients = () => [
   {
-    _id: "dummy-patient-1",
+    _id: "1",
     patientId: "CLA-2026-00001",
-    username: "JDoe_B21",
-    name: "John Doe",
-    age: 55,
+    username: "testpatient1",
+    name: "Arjun Mehta",
+    age: 45,
     gender: "Male",
-    primaryDiagnosis: "Severe Sepsis",
-    assignedNurses: ["testnurse1"],
+    primaryDiagnosis: "Sepsis",
+    assignedNurse: "testnurse1",
+    assignedDoctor: "testdoctor1",
     role: "PATIENT",
-    ward: "Intensive Care",
+    ward: "ICU",
     riskScore: "Critical",
     activeProtocol: "Sepsis Resuscitation Bundles",
     targetMAP: 65,
     baselineCO: 4.5,
     baselineSV: 60,
     signalQualityIndex: 98,
-    batteryLevel: 85,
-    deviceType: "MBS-Adapter Edge Node"
+    batteryLevel: 95,
+    deviceType: "VitalPatch"
   },
   {
-    _id: "dummy-patient-2",
+    _id: "2",
     patientId: "CLA-2026-00002",
-    username: "ASmith_S4",
-    name: "Alice Smith",
+    username: "testpatient2",
+    name: "Priya Nair",
     age: 62,
     gender: "Female",
-    primaryDiagnosis: "Post-Op Cardiac Surgery",
-    assignedNurses: ["testnurse1"],
+    primaryDiagnosis: "Heart Failure",
+    assignedNurse: "testnurse1",
+    assignedDoctor: "testdoctor1",
     role: "PATIENT",
-    ward: "Step-Down Unit",
+    ward: "Step-down Unit",
     riskScore: "High",
-    activeProtocol: "Post-Op Cardiac Monitoring",
+    activeProtocol: "Cardiac Output Optimization",
     targetMAP: 70,
-    baselineCO: 5.0,
-    baselineSV: 65,
-    signalQualityIndex: 92,
-    batteryLevel: 45,
-    deviceType: "MBS-Adapter Edge Node"
+    baselineCO: 4.0,
+    baselineSV: 55,
+    signalQualityIndex: 90,
+    batteryLevel: 80,
+    deviceType: "VitalPatch"
   },
   {
-    _id: "dummy-patient-3",
+    _id: "3",
     patientId: "CLA-2026-00003",
     username: "RJones_G11",
-    name: "Robert Jones",
-    age: 42,
+    name: "Rajesh Jones",
+    age: 55,
     gender: "Male",
     primaryDiagnosis: "Pneumonia",
-    assignedNurses: ["testnurse1"],
+    assignedNurse: "testnurse2",
+    assignedDoctor: "testdoctor2",
+    role: "PATIENT",
+    ward: "General Ward",
+    riskScore: "Moderate",
+    activeProtocol: "Respiratory Support",
+    targetMAP: 70,
+    baselineCO: 5.0,
+    baselineSV: 70,
+    signalQualityIndex: 100,
+    batteryLevel: 100,
+    deviceType: "Standard Monitor"
+  },
+  {
+    _id: "4",
+    patientId: "CLA-2026-00004",
+    username: "MWilliams_W2",
+    name: "Maria Williams",
+    age: 71,
+    gender: "Female",
+    primaryDiagnosis: "Renal Failure",
+    assignedNurse: "testnurse2",
+    assignedDoctor: "testdoctor1",
+    role: "PATIENT",
+    ward: "ICU",
+    riskScore: "Medium",
+    activeProtocol: "Fluid Resuscitation",
+    targetMAP: 75,
+    baselineCO: 4.2,
+    baselineSV: 58,
+    signalQualityIndex: 85, 
+    batteryLevel: 65,
+    deviceType: "VitalPatch"
+  },
+  {
+    _id: "5",
+    patientId: "CLA-2026-00005",
+    username: "ASmith_S4",
+    name: "Alex Smith",
+    age: 29,
+    gender: "Male",
+    primaryDiagnosis: "Post-op Recovery",
+    assignedNurse: "testnurse1",
+    assignedDoctor: "testdoctor2",
     role: "PATIENT",
     ward: "General Ward",
     riskScore: "Low",
-    activeProtocol: "Standard Recovery",
-    targetMAP: 65,
+    activeProtocol: "Standard Observation",
+    targetMAP: 80,
     baselineCO: 5.5,
-    baselineSV: 70,
-    signalQualityIndex: 99,
+    baselineSV: 75,
+    signalQualityIndex: 99, 
     batteryLevel: 90,
-    deviceType: "MBS-Adapter Edge Node"
-  },
-  {
-    _id: "dummy-patient-4",
-    patientId: "CLA-2026-00004",
-    username: "MWilliams_W2",
-    name: "Mary Williams",
-    age: 71,
-    gender: "Female",
-    primaryDiagnosis: "Observation",
-    assignedNurses: ["testnurse1"],
-    role: "PATIENT",
-    ward: "General Ward",
-    riskScore: "Medium",
-    activeProtocol: "Observation",
-    targetMAP: 65,
-    baselineCO: 4.0,
-    baselineSV: 60,
-    signalQualityIndex: 0, // Edge Case: Sensor disconnected
-    batteryLevel: 0,
-    deviceType: "MBS-Adapter Edge Node"
+    deviceType: "Basic Telemetry"
   }
 ];
 
@@ -88,7 +113,7 @@ const addNoise = (val, maxDelta) => val + Math.floor(Math.random() * (maxDelta *
 
 export const generateDummyVitals = (patientId, previousVitals = null) => {
   // Simulate occasional realistic artifacts instead of complete sensor failure
-  if (patientId === "dummy-patient-4" && Math.random() > 0.95) {
+  if (patientId === "4" && Math.random() > 0.95) {
      return {
       patientId,
       timestamp: new Date().toISOString(),
@@ -104,8 +129,8 @@ export const generateDummyVitals = (patientId, previousVitals = null) => {
     };
   }
 
-  const isCritical = patientId === "dummy-patient-1" || patientId === "1";
-  const isHigh = patientId === "dummy-patient-2" || patientId === "2";
+  const isCritical = patientId === "1";
+  const isHigh = patientId === "2";
   
   let hr, spO2, sys, dia, rr;
 
