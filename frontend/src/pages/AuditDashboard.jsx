@@ -12,7 +12,7 @@ const AuditDashboard = () => {
   const [eventTypeFilter, setEventTypeFilter] = useState('ALL');
 
   useEffect(() => {
-    const API_URL = import.meta.env.VITE_BACKEND_URL || `http://${window.location.hostname}:5000`;
+    const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://10.2.195.143:5000';
     const token = JSON.parse(localStorage.getItem('cliniaura_user'))?.token;
 
     fetch(`${API_URL}/api/audit/report`, {
@@ -34,7 +34,7 @@ const AuditDashboard = () => {
 
   const handleVerify = async () => {
     try {
-      const API_URL = import.meta.env.VITE_BACKEND_URL || `http://${window.location.hostname}:5000`;
+      const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://10.2.195.143:5000';
       const token = JSON.parse(localStorage.getItem('cliniaura_user'))?.token;
       
       const res = await fetch(`${API_URL}/api/audit/verify`, {
@@ -48,7 +48,7 @@ const AuditDashboard = () => {
   };
 
   const handleDownloadPDF = () => {
-    const API_URL = import.meta.env.VITE_BACKEND_URL || `http://${window.location.hostname}:5000`;
+    const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://10.2.195.143:5000';
     // Passing token via query string or directly triggering secure tab
     window.open(`${API_URL}/api/audit/generate-pdf`, '_blank');
   };

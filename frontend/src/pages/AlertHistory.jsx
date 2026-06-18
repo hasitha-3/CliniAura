@@ -15,7 +15,7 @@ const AlertHistory = () => {
         const apiKey = localStorage.getItem('medgemma_api_key') || '';
         const token = JSON.parse(localStorage.getItem('cliniaura_user'))?.token || '';
         
-        const API_URL = import.meta.env.VITE_BACKEND_URL || `http://${window.location.hostname}:5000`;
+        const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://10.2.195.143:5000';
         
         // Fetch patients to map names
         const ptRes = await fetch(`${API_URL}/api/patients`, {
@@ -31,7 +31,7 @@ const AlertHistory = () => {
         }
 
         // Fetch from Jetson Nano Edge API
-        const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || `http://${window.location.hostname}:5000`}/api/nano/alerts`, {
+        const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://10.2.195.143:5000'}/api/nano/alerts`, {
           headers: {
             'Authorization': `Bearer ${token}`
           }

@@ -10,7 +10,7 @@ const ABGManager = ({ patientId, patientName }) => {
   const [history, setHistory] = useState([]);
   const [error, setError] = useState(null);
   
-  const API_URL = import.meta.env.VITE_BACKEND_URL || `http://${window.location.hostname}:5000`;
+  const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://10.2.195.143:5000';
   const token = JSON.parse(localStorage.getItem('cliniaura_user'))?.token;
 
   useEffect(() => {

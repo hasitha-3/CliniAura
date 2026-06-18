@@ -27,7 +27,7 @@ const CommandCentre = () => {
   const user = JSON.parse(localStorage.getItem('cliniaura_user'));
 
   useEffect(() => {
-    const API_URL = import.meta.env.VITE_BACKEND_URL || `http://${window.location.hostname}:5000`;
+    const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://10.2.195.143:5000';
     const token = user?.token;
 
     // Fetch authorized patient listings
