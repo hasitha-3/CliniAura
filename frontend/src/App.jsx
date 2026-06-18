@@ -24,7 +24,7 @@ const AuthProvider = ({ children }) => {
     return saved ? JSON.parse(saved) : null;
   });
 
-  const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+  const API_URL = import.meta.env.VITE_BACKEND_URL || `http://${window.location.hostname}:5000`;
 
   const login = async (username, password) => {
     const controller = new AbortController();
@@ -209,7 +209,7 @@ const SettingsPage = () => {
   const [health, setHealth] = useState(null);
 
   useEffect(() => {
-    const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+    const API_URL = import.meta.env.VITE_BACKEND_URL || `http://${window.location.hostname}:5000`;
     if (user && user.role === 'PATIENT') {
       const token = JSON.parse(localStorage.getItem('cliniaura_user'))?.token;
       fetch(`${API_URL}/api/patients`, {
@@ -241,7 +241,7 @@ const SettingsPage = () => {
   // Fetch MedGemma Health Status
   useEffect(() => {
     if (user?.role === 'DOCTOR' || user?.role === 'ADMIN') {
-      fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000'}/api/nano/health`)
+      fetch(`${import.meta.env.VITE_BACKEND_URL || `http://${window.location.hostname}:5000`}/api/nano/health`)
         .then(res => res.json())
         .then(data => setHealth(data))
         .catch(() => setHealth({ status: 'unreachable' }));
@@ -255,7 +255,7 @@ const SettingsPage = () => {
 
   const handleSave = async (e) => {
     e.preventDefault();
-    const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+    const API_URL = import.meta.env.VITE_BACKEND_URL || `http://${window.location.hostname}:5000`;
     const token = JSON.parse(localStorage.getItem('cliniaura_user'))?.token;
     try {
       const res = await fetch(`${API_URL}/api/users/${profile._id || user.id}`, {
@@ -285,7 +285,7 @@ const SettingsPage = () => {
       return;
     }
 
-    const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+    const API_URL = import.meta.env.VITE_BACKEND_URL || `http://${window.location.hostname}:5000`;
     const token = JSON.parse(localStorage.getItem('cliniaura_user'))?.token;
     try {
       const res = await fetch(`${API_URL}/api/users/${profile._id || user.id}/password`, {
@@ -647,7 +647,7 @@ const AdminDashboard = () => {
 
   useEffect(() => {
     const token = JSON.parse(localStorage.getItem('cliniaura_user'))?.token;
-    fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000'}/api/users`, {
+    fetch(`${import.meta.env.VITE_BACKEND_URL || `http://${window.location.hostname}:5000`}/api/users`, {
       headers: { 'Authorization': `Bearer ${token}` }
     })
       .then(res => res.json())
@@ -661,7 +661,7 @@ const AdminDashboard = () => {
   const handleReassign = async (patientId) => {
     try {
       const token = JSON.parse(localStorage.getItem('cliniaura_user'))?.token;
-      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000'}/api/patients/${patientId}/assign`, {
+      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || `http://${window.location.hostname}:5000`}/api/patients/${patientId}/assign`, {
         method: 'PUT',
         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ assignedDoctor: tempDoctor, assignedNurse: tempNurse })
@@ -1002,7 +1002,7 @@ const DoctorDashboard = () => {
   const [sortOrder, setSortOrder] = useState('DESC');
 
   useEffect(() => {
-    const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+    const API_URL = import.meta.env.VITE_BACKEND_URL || `http://${window.location.hostname}:5000`;
     const token = JSON.parse(localStorage.getItem('cliniaura_user'))?.token;
     fetch(`${API_URL}/api/patients`, {
       headers: { 'Authorization': `Bearer ${token}` }
@@ -1050,7 +1050,7 @@ const DoctorDashboard = () => {
       if (window.doctorDemoInterval) clearInterval(window.doctorDemoInterval);
       window.doctorDemoInterval = setInterval(async () => {
         try {
-          const nanoRes = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000'}/api/nano/dashboard/live`);
+          const nanoRes = await fetch(`${import.meta.env.VITE_BACKEND_URL || `http://${window.location.hostname}:5000`}/api/nano/dashboard/live`);
           if (nanoRes.ok) {
             const liveData = await nanoRes.json();
             const myData = liveData.find(d => d.patient_id === selectedPatient._id || d.patient_id === selectedPatient.username);
@@ -1303,7 +1303,7 @@ const PatientDashboard = () => {
   const { user } = useContext(AuthContext);
 
   useEffect(() => {
-    const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+    const API_URL = import.meta.env.VITE_BACKEND_URL || `http://${window.location.hostname}:5000`;
     const token = JSON.parse(localStorage.getItem('cliniaura_user'))?.token;
     
     fetch(`${API_URL}/api/patients`, {
@@ -1357,7 +1357,7 @@ const PatientDashboard = () => {
                    // Fallback to Jetson Nano Edge Polling
                    window.patientDemoInterval = setInterval(async () => {
                      try {
-                       const nanoRes = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000'}/api/nano/dashboard/live`);
+                       const nanoRes = await fetch(`${import.meta.env.VITE_BACKEND_URL || `http://${window.location.hostname}:5000`}/api/nano/dashboard/live`);
                        if (nanoRes.ok) {
                          const liveData = await nanoRes.json();
                          const myData = liveData.find(d => d.patient_id === me._id || d.patient_id === me.username);
@@ -1435,7 +1435,7 @@ const PatientDashboard = () => {
             onClick={() => {
               if (!profile || !socket) return;
               const callData = { patientId: profile._id, patientName: profile.name || profile.username, timestamp: new Date().toISOString() };
-              fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000'}/api/patient-calls`, {
+              fetch(`${import.meta.env.VITE_BACKEND_URL || `http://${window.location.hostname}:5000`}/api/patient-calls`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(callData)
@@ -1607,7 +1607,7 @@ const DashboardRouter = () => {
 
   useEffect(() => {
     if (user) {
-      const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+      const API_URL = import.meta.env.VITE_BACKEND_URL || `http://${window.location.hostname}:5000`;
       const token = JSON.parse(localStorage.getItem('cliniaura_user'))?.token;
       
       if (user.role?.toUpperCase() === 'PATIENT') {

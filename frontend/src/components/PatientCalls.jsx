@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Bell, Check, Edit2 } from 'lucide-react';
 import io from 'socket.io-client';
 
-const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+const API_URL = import.meta.env.VITE_BACKEND_URL || `http://${window.location.hostname}:5000`;
 
 const PatientCalls = ({ role, username }) => {
   const [calls, setCalls] = useState([]);
