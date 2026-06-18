@@ -55,7 +55,7 @@ const CommandCentre = () => {
       });
 
     // --- NEW: Jetson Nano Edge API Polling (Always runs) ---
-    const NANO_API = `${API_URL}/api/nano/dashboard/live`;
+    const NANO_API = 'http://100.104.109.66:8000/dashboard/live';
     const nanoIntervalId = setInterval(async () => {
       try {
         const nanoRes = await fetch(NANO_API);
