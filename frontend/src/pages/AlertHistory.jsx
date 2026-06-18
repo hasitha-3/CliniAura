@@ -31,7 +31,7 @@ const AlertHistory = () => {
         }
 
         // Fetch from Jetson Nano Edge API
-        const res = await fetch('http://100.104.109.66:5000/alerts', {
+        const res = await fetch('http://100.104.109.66:8000/alerts', {
           headers: {
             'Authorization': `Bearer ${token}`
           }

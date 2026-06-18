@@ -241,7 +241,7 @@ const SettingsPage = () => {
   // Fetch MedGemma Health Status
   useEffect(() => {
     if (user?.role === 'DOCTOR' || user?.role === 'ADMIN') {
-      fetch('http://100.104.109.66:5000/health')
+      fetch('http://100.104.109.66:8000/health')
         .then(res => res.json())
         .then(data => setHealth(data))
         .catch(() => setHealth({ status: 'unreachable' }));
@@ -1050,7 +1050,7 @@ const DoctorDashboard = () => {
       if (window.doctorDemoInterval) clearInterval(window.doctorDemoInterval);
       window.doctorDemoInterval = setInterval(async () => {
         try {
-          const nanoRes = await fetch('http://100.104.109.66:5000/dashboard/live');
+          const nanoRes = await fetch('http://100.104.109.66:8000/dashboard/live');
           if (nanoRes.ok) {
             const liveData = await nanoRes.json();
             const myData = liveData.find(d => d.patient_id === selectedPatient._id || d.patient_id === selectedPatient.username);
@@ -1357,7 +1357,7 @@ const PatientDashboard = () => {
                    // Fallback to Jetson Nano Edge Polling
                    window.patientDemoInterval = setInterval(async () => {
                      try {
-                       const nanoRes = await fetch('http://100.104.109.66:5000/dashboard/live');
+                       const nanoRes = await fetch('http://100.104.109.66:8000/dashboard/live');
                        if (nanoRes.ok) {
                          const liveData = await nanoRes.json();
                          const myData = liveData.find(d => d.patient_id === me._id || d.patient_id === me.username);
