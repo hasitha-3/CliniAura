@@ -142,6 +142,40 @@ app.post('/api/login', async (req, res) => {
 });
 
 // --- API Routes ---
+// --- NANO API PROXY ENDPOINTS ---
+const NANO_BASE_URL = 'http://100.104.109.66:8000';
+
+app.get('/api/nano/health', async (req, res) => {
+  try {
+    const nanoRes = await fetch(`${NANO_BASE_URL}/health`);
+    const data = await nanoRes.json();
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ status: "offline", error: "Nano proxy failed" });
+  }
+});
+
+app.get('/api/nano/dashboard/live', async (req, res) => {
+  try {
+    const nanoRes = await fetch(`${NANO_BASE_URL}/dashboard/live`);
+    const data = await nanoRes.json();
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: "Nano proxy failed" });
+  }
+});
+
+app.get('/api/nano/alerts', async (req, res) => {
+  try {
+    const nanoRes = await fetch(`${NANO_BASE_URL}/alerts`);
+    const data = await nanoRes.json();
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: "Nano proxy failed" });
+  }
+});
+// --------------------------------
+
 app.get('/api/users', (req, res) => {
   const safeUsers = USERS.map(u => { const { password, ...rest } = u; return rest; });
   res.json(safeUsers);
