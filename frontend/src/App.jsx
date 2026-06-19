@@ -15,6 +15,7 @@ import EHRManager from './components/EHRManager';
 import CareSchedule from './components/CareSchedule';
 import useWardStore from './stores/wardStore';
 import PatientCalls from './components/PatientCalls';
+import ABGManager from './components/ABGManager';
 
 export const AuthContext = createContext(null);
 
@@ -24,7 +25,7 @@ const AuthProvider = ({ children }) => {
     return saved ? JSON.parse(saved) : null;
   });
 
-  const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://10.2.195.143:5000';
+  const API_URL = import.meta.env.VITE_BACKEND_URL || `${window.location.protocol}//${window.location.hostname}:5000`;
 
   const login = async (username, password) => {
     const controller = new AbortController();
@@ -255,7 +256,7 @@ const SettingsPage = () => {
 
   const handleSave = async (e) => {
     e.preventDefault();
-    const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://10.2.195.143:5000';
+    const API_URL = import.meta.env.VITE_BACKEND_URL || `${window.location.protocol}//${window.location.hostname}:5000`;
     const token = JSON.parse(localStorage.getItem('cliniaura_user'))?.token;
     try {
       const res = await fetch(`${API_URL}/api/users/${profile._id || user.id}`, {
@@ -285,7 +286,7 @@ const SettingsPage = () => {
       return;
     }
 
-    const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://10.2.195.143:5000';
+    const API_URL = import.meta.env.VITE_BACKEND_URL || `${window.location.protocol}//${window.location.hostname}:5000`;
     const token = JSON.parse(localStorage.getItem('cliniaura_user'))?.token;
     try {
       const res = await fetch(`${API_URL}/api/users/${profile._id || user.id}/password`, {
@@ -645,9 +646,12 @@ const AdminDashboard = () => {
   const [tempDoctor, setTempDoctor] = useState('');
   const [tempNurse, setTempNurse] = useState('');
 
+  const [adminVitals, setAdminVitals] = useState({});
+
   useEffect(() => {
+    const API_URL = import.meta.env.VITE_BACKEND_URL || `${window.location.protocol}//${window.location.hostname}:5000`;
     const token = JSON.parse(localStorage.getItem('cliniaura_user'))?.token;
-    fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://10.2.195.143:5000'}/api/users`, {
+    fetch(`${API_URL}/api/users`, {
       headers: { 'Authorization': `Bearer ${token}` }
     })
       .then(res => res.json())
@@ -656,12 +660,24 @@ const AdminDashboard = () => {
         console.warn("Using dummy data for AdminDashboard");
         setUsers(generateDummyPatients());
       });
+
+    const role = JSON.parse(localStorage.getItem('cliniaura_user'))?.role;
+    const newSocket = io(API_URL, { auth: { token, role } });
+    
+    newSocket.on('vitals_update', (data) => {
+      setAdminVitals(prev => ({
+        ...prev,
+        [data.vitals.patientId]: data.vitals
+      }));
+    });
+
+    return () => newSocket.close();
   }, []);
 
   const handleReassign = async (patientId) => {
     try {
       const token = JSON.parse(localStorage.getItem('cliniaura_user'))?.token;
-      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://10.2.195.143:5000'}/api/patients/${patientId}/assign`, {
+      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || `${window.location.protocol}//${window.location.hostname}:5000`}/api/patients/${patientId}/assign`, {
         method: 'PUT',
         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ assignedDoctor: tempDoctor, assignedNurse: tempNurse })
@@ -866,8 +882,38 @@ const AdminDashboard = () => {
               if (!u) return null;
               return (
                 <div style={{ animation: 'fade-up 0.3s ease' }}>
-                  <h2 style={{ color: 'var(--teal)', marginBottom: '30px', marginTop: 0, fontSize: '1.8rem' }}>Patient Details: {u.name || u.username}</h2>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+                    <h2 style={{ color: 'var(--teal)', margin: 0, fontSize: '1.8rem' }}>Patient Details: {u.name || u.username}</h2>
+                    <div style={{ background: 'rgba(255, 77, 106, 0.1)', padding: '8px 16px', borderRadius: '8px', border: '1px solid #ff4d6a', color: '#ff4d6a', fontWeight: 'bold' }}>
+                      Status: {u.riskScore} Risk
+                    </div>
+                  </div>
                   
+                  {/* Real-time Vitals & Alerts Block */}
+                  {(() => {
+                    const v = adminVitals[u._id] || {};
+                    return (
+                      <div className="grid grid-cols-4 mb-4" style={{ gap: '16px' }}>
+                        <div className="metric-box" style={{ background: 'rgba(0, 212, 170, 0.05)', border: '1px solid var(--teal)' }}>
+                          <div style={{fontSize: '0.8rem', color: 'var(--teal)', textTransform: 'uppercase'}}>Heart Rate</div>
+                          <div className="metric-val" style={{fontSize: '1.5rem', color: 'var(--text)'}}>{v.heartRate || '--'} <span style={{fontSize:'0.9rem', color:'var(--text-dim)'}}>bpm</span></div>
+                        </div>
+                        <div className="metric-box" style={{ background: 'rgba(0, 212, 170, 0.05)', border: '1px solid var(--teal)' }}>
+                          <div style={{fontSize: '0.8rem', color: 'var(--teal)', textTransform: 'uppercase'}}>SpO2</div>
+                          <div className="metric-val" style={{fontSize: '1.5rem', color: 'var(--text)'}}>{v.spO2 || '--'} <span style={{fontSize:'0.9rem', color:'var(--text-dim)'}}>%</span></div>
+                        </div>
+                        <div className="metric-box" style={{ background: 'rgba(0, 212, 170, 0.05)', border: '1px solid var(--teal)' }}>
+                          <div style={{fontSize: '0.8rem', color: 'var(--teal)', textTransform: 'uppercase'}}>Blood Pressure</div>
+                          <div className="metric-val" style={{fontSize: '1.5rem', color: 'var(--text)'}}>{v.bloodPressureSys || '--'}/{v.bloodPressureDia || '--'}</div>
+                        </div>
+                        <div className="metric-box" style={{ background: 'rgba(0, 212, 170, 0.05)', border: '1px solid var(--teal)' }}>
+                          <div style={{fontSize: '0.8rem', color: 'var(--teal)', textTransform: 'uppercase'}}>Respiration</div>
+                          <div className="metric-val" style={{fontSize: '1.5rem', color: 'var(--text)'}}>{v.respirationRate || '--'} <span style={{fontSize:'0.9rem', color:'var(--text-dim)'}}>rpm</span></div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   <div className="grid grid-cols-4 mb-4" style={{ gap: '16px' }}>
                     <div className="metric-box" style={{ gridColumn: 'span 4', display: 'flex', flexWrap: 'wrap', gap: '24px', padding: '20px', background: 'rgba(15, 23, 42, 0.5)' }}>
                       <div style={{ flex: '1 1 200px' }}>
@@ -900,10 +946,6 @@ const AdminDashboard = () => {
                         <div style={{fontSize: '0.8rem', color: '#94a3b8', textTransform: 'uppercase'}}>Admission Date</div>
                         <div className="metric-val" style={{fontSize: '1.2rem'}}>{u.admissionDate || u.admittedOn ? new Date(u.admissionDate || u.admittedOn).toLocaleString() : 'N/A'}</div>
                       </div>
-                    </div>
-                    <div className="metric-box" style={{ padding: '20px', background: 'rgba(15, 23, 42, 0.5)' }}>
-                      <div style={{fontSize: '0.8rem', color: '#94a3b8', textTransform: 'uppercase'}}>Risk Score</div>
-                      <div className="metric-val" style={{fontSize: '1.2rem'}}><span className={`badge-risk risk-${u.riskScore}`}>{u.riskScore}</span></div>
                     </div>
                     <div className="metric-box" style={{ padding: '20px', background: 'rgba(15, 23, 42, 0.5)' }}>
                       <div style={{fontSize: '0.8rem', color: '#94a3b8', textTransform: 'uppercase'}}>Target MAP</div>
@@ -949,17 +991,12 @@ const AdminDashboard = () => {
                   
                   {/* Care Schedule Preview */}
                   <div style={{ marginBottom: '20px' }}>
-                     <CareSchedule patientId={u._id} patientName={u.name || u.username} role="ADMIN" />
+                     <CareSchedule patientId={u.patientId || u._id} patientName={u.name || u.username} role="ADMIN" />
                   </div>
                   
-                  {/* Clinical Documents */}
-                  <div style={{ marginBottom: '20px', background: 'rgba(15, 23, 42, 0.6)', padding: '24px', borderRadius: '12px' }}>
-                    <h4 style={{ margin: '0 0 16px 0', fontSize: '1.1rem', color: 'var(--teal)' }}>Patient Documents & AI Reports</h4>
-                    <div style={{ display: 'flex', gap: '12px' }}>
-                       <button className="btn" style={{ background: 'var(--teal)', border: '1px solid var(--teal)', color: 'var(--bg)', fontSize: '0.9rem', padding: '10px 20px', fontWeight: 'bold' }}>View EHR PDF</button>
-                       <button className="btn" style={{ background: 'var(--teal)', border: '1px solid var(--teal)', color: 'var(--bg)', fontSize: '0.9rem', padding: '10px 20px', fontWeight: 'bold' }}>View ABG Lab PDF</button>
-                       <button className="btn" style={{ background: '#38bdf8', border: '1px solid #38bdf8', color: 'var(--bg)', fontSize: '0.9rem', padding: '10px 20px', fontWeight: 'bold' }}>Download MedGemma AI Report</button>
-                    </div>
+                  {/* Clinical Documents & ABG */}
+                  <div style={{ marginBottom: '20px' }}>
+                     <ABGManager patientId={u.patientId || u._id} patientName={u.name || u.username} />
                   </div>
                   
                   <h4 style={{marginBottom: '12px', fontSize: '1.1rem', color: 'var(--teal)'}}>
@@ -1002,7 +1039,7 @@ const DoctorDashboard = () => {
   const [sortOrder, setSortOrder] = useState('DESC');
 
   useEffect(() => {
-    const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://10.2.195.143:5000';
+    const API_URL = import.meta.env.VITE_BACKEND_URL || `${window.location.protocol}//${window.location.hostname}:5000`;
     const token = JSON.parse(localStorage.getItem('cliniaura_user'))?.token;
     fetch(`${API_URL}/api/patients`, {
       headers: { 'Authorization': `Bearer ${token}` }
@@ -1303,7 +1340,7 @@ const PatientDashboard = () => {
   const { user } = useContext(AuthContext);
 
   useEffect(() => {
-    const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://10.2.195.143:5000';
+    const API_URL = import.meta.env.VITE_BACKEND_URL || `${window.location.protocol}//${window.location.hostname}:5000`;
     const token = JSON.parse(localStorage.getItem('cliniaura_user'))?.token;
     
     fetch(`${API_URL}/api/patients`, {
@@ -1435,7 +1472,7 @@ const PatientDashboard = () => {
             onClick={() => {
               if (!profile || !socket) return;
               const callData = { patientId: profile._id, patientName: profile.name || profile.username, timestamp: new Date().toISOString() };
-              fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://10.2.195.143:5000'}/api/patient-calls`, {
+              fetch(`${import.meta.env.VITE_BACKEND_URL || `${window.location.protocol}//${window.location.hostname}:5000`}/api/patient-calls`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(callData)
@@ -1607,7 +1644,7 @@ const DashboardRouter = () => {
 
   useEffect(() => {
     if (user) {
-      const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://10.2.195.143:5000';
+      const API_URL = import.meta.env.VITE_BACKEND_URL || `${window.location.protocol}//${window.location.hostname}:5000`;
       const token = JSON.parse(localStorage.getItem('cliniaura_user'))?.token;
       
       if (user.role?.toUpperCase() === 'PATIENT') {

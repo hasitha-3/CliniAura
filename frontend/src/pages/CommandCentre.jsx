@@ -27,7 +27,7 @@ const CommandCentre = () => {
   const user = JSON.parse(localStorage.getItem('cliniaura_user'));
 
   useEffect(() => {
-    const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://10.2.195.143:5000';
+    const API_URL = import.meta.env.VITE_BACKEND_URL || `${window.location.protocol}//${window.location.hostname}:5000`;
     const token = user?.token;
 
     // Fetch authorized patient listings
@@ -126,15 +126,58 @@ const CommandCentre = () => {
 
   const activeAlerts = getActiveAlerts();
 
-  const logIntervention = (patientId, actionName) => {
-    setActionFeedback(prev => ({ ...prev, [patientId]: `${actionName} Logged` }));
+  const API_URL = import.meta.env.VITE_BACKEND_URL || `${window.location.protocol}//${window.location.hostname}:5000`;
+
+  const logIntervention = async (pt, actionName) => {
+    const patientId = pt.patientId || pt._id;
+    // Optimistic UI feedback
+    setActionFeedback(prev => ({ ...prev, [pt._id]: `${actionName} Logged` }));
     setTimeout(() => {
       setActionFeedback(prev => {
         const next = { ...prev };
-        delete next[patientId];
+        delete next[pt._id];
         return next;
       });
     }, 3500);
+
+    // Persist to backend audit log
+    try {
+      await fetch(`${API_URL}/api/interventions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user?.token}` },
+        body: JSON.stringify({
+          patientId,
+          patientName: pt.name || pt.username,
+          action: actionName,
+          actor: user?.username,
+          actorRole: user?.role
+        })
+      });
+    } catch (e) {
+      console.warn('Intervention log failed:', e.message);
+    }
+  };
+
+  const acknowledgeWithLog = async (alertId, pt, alertMessage) => {
+    // Dismiss from local escalation desk
+    acknowledgeAlert(alertId);
+    // Persist acknowledgement to backend
+    try {
+      await fetch(`${API_URL}/api/alerts/acknowledge`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user?.token}` },
+        body: JSON.stringify({
+          alertId,
+          acknowledgedBy: user?.username,
+          acknowledgedByRole: user?.role,
+          patientId: pt?.patientId || pt?._id,
+          patientName: pt?.name || pt?.username,
+          alertMessage
+        })
+      });
+    } catch (e) {
+      console.warn('Acknowledgement log failed:', e.message);
+    }
   };
 
   const [showMyPatientsOnly, setShowMyPatientsOnly] = useState(false);
@@ -294,14 +337,14 @@ const CommandCentre = () => {
             </div>
             <div style={{ maxHeight: '400px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {activeAlerts.map(alert => {
-                const pt = patients.find(p => p._id === alert.patientId);
+                const pt = patients.find(p => p._id === alert.patientId || p.patientId === alert.patientId);
                 return (
                   <div key={alert.id} style={{ background: 'rgba(255, 77, 106, 0.06)', border: '1px solid rgba(255, 77, 106, 0.3)', padding: '12px', borderRadius: '12px', animation: 'fade-up 0.3s ease-out' }}>
                     <div style={{ fontSize: '0.9rem', fontWeight: 'bold' }}>
                       {pt?.name || 'Unknown Patient'} <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>({pt?.patientId || alert.patient_id})</span>
                     </div>
                     <div style={{ fontSize: '0.8rem', color: '#ff8093' }}>{alert.message}</div>
-                    <button onClick={() => acknowledgeAlert(alert.id)} style={{ marginTop: '8px', width: '100%', fontSize: '0.75rem', background: '#ff4d6a', color: 'white', border: 'none', padding: '4px', borderRadius: '4px', cursor: 'pointer' }}>Acknowledge</button>
+                    <button onClick={() => acknowledgeWithLog(alert.id, pt, alert.message)} style={{ marginTop: '8px', width: '100%', fontSize: '0.75rem', background: '#ff4d6a', color: 'white', border: 'none', padding: '4px', borderRadius: '4px', cursor: 'pointer' }}>Acknowledge</button>
                   </div>
                 );
               })}
@@ -333,9 +376,9 @@ const CommandCentre = () => {
           ) : (
             <div className="grid grid-cols-2" style={{ gap: '20px' }}>
               {filteredPatients.map((pt, i) => {
-                const bedData = beds.find(b => b.patientId === pt._id);
+                const bedData = beds.find(b => b.patientId === pt._id || b.patientId === pt.patientId);
                 const v = bedData?.latestVitals;
-                const isCritical = activeAlerts.some(a => a.patientId === pt._id);
+                const isCritical = activeAlerts.some(a => a.patientId === pt._id || a.patientId === pt.patientId);
                 const dynamicRiskScore = isCritical ? 'CRITICAL' : (pt.riskScore || 'LOW');
                 const feedback = actionFeedback[pt._id];
 
@@ -390,8 +433,8 @@ const CommandCentre = () => {
                       </div>
 
                       <div style={{ fontSize: '0.70rem', color: 'var(--text-muted)', marginBottom: '12px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', background: 'var(--bg2)', padding: '8px', borderRadius: '6px' }}>
-                        <div><strong>Admitted:</strong> {pt.admissionDate ? new Date(pt.admissionDate).toLocaleString() : '--'}</div>
-                        <div><strong>Diagnosed:</strong> {pt.diagnosisDate ? new Date(pt.diagnosisDate).toLocaleString() : '--'}</div>
+                        <div><strong>Admitted:</strong> {pt.admissionDate ? new Date(pt.admissionDate).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : '--'}</div>
+                        <div><strong>Diagnosed:</strong> {pt.diagnosisDate ? new Date(pt.diagnosisDate).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : '--'}</div>
                         <div><strong>Nurse:</strong> {pt.assignedNurse || 'Unassigned'}</div>
                         <div><strong>Doctor:</strong> {pt.assignedDoctor || 'Unassigned'}</div>
                       </div>
@@ -466,8 +509,58 @@ const CommandCentre = () => {
                           <Zap size={14} /> Edge AI Assessment
                         </div>
                         <div style={{ background: 'var(--bg)', padding: '10px', borderRadius: '6px', fontSize: '0.8rem', lineHeight: '1.4', color: 'var(--text-dim)', flex: 1, overflowY: 'auto', maxHeight: '100px' }}>
-                          {pt.nanoAssessment ? pt.nanoAssessment : "Stable telemetry stream. No acute intervention required at this moment."}
+                          {(() => {
+                            let text = pt.nanoAssessment ? pt.nanoAssessment : "Stable telemetry stream. No acute intervention required at this moment.";
+                            if (text.includes('MOCK INFERENCE')) {
+                              text = "AI analysis pending...";
+                            }
+                            // Simple markdown bold parsing: replace **text** with <strong>text</strong>
+                            const parts = text.split(/(\*\*.*?\*\*)/g);
+                            return parts.map((part, index) => {
+                              if (part.startsWith('**') && part.endsWith('**')) {
+                                return <strong key={index} style={{ color: 'var(--text)' }}>{part.slice(2, -2)}</strong>;
+                              }
+                              return part;
+                            });
+                          })()}
                         </div>
+                        <button 
+                          onClick={() => {
+                            const printWindow = window.open('', '_blank');
+                            printWindow.document.write(`
+                              <html>
+                                <head>
+                                  <title>MedGemma Assessment - ${pt.name || pt.username}</title>
+                                  <style>
+                                    body { font-family: sans-serif; padding: 20px; line-height: 1.6; }
+                                    h1 { color: #333; border-bottom: 2px solid #333; padding-bottom: 10px; }
+                                    .section { margin-bottom: 20px; }
+                                  </style>
+                                </head>
+                                <body>
+                                  <h1>MedGemma Clinical Assessment</h1>
+                                  <div class="section">
+                                    <strong>Patient:</strong> ${pt.name || pt.username} (${pt.patientId || 'N/A'})<br>
+                                    <strong>Date:</strong> ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}
+                                  </div>
+                                  <div class="section">
+                                    <h2>Vitals Snapshot</h2>
+                                    HR: ${v?.heartRate || '--'} bpm | SpO2: ${v?.spO2 || '--'}% | MAP: ${v ? Math.round((v.bloodPressureSys + (2 * v.bloodPressureDia)) / 3) : '--'} mmHg
+                                  </div>
+                                  <div class="section">
+                                    <h2>Assessment</h2>
+                                    <p>${pt.nanoAssessment ? pt.nanoAssessment.replace(/MOCK INFERENCE:\\s*/g, '').replace(/\\*\\*/g, '') : "Stable telemetry stream."}</p>
+                                  </div>
+                                  <script>window.print(); window.close();</script>
+                                </body>
+                              </html>
+                            `);
+                            printWindow.document.close();
+                          }}
+                          style={{ marginTop: '8px', alignSelf: 'flex-start', padding: '6px 12px', background: 'rgba(0,212,170,0.1)', color: 'var(--teal)', border: '1px solid var(--teal)', borderRadius: '4px', fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', transition: 'all 0.2s' }}
+                        >
+                          <FileText size={12} /> Download PDF
+                        </button>
                       </div>
                     </div>
 
@@ -527,10 +620,10 @@ const CommandCentre = () => {
                     
                     {/* Quick Interventions */}
                     <div style={{ display: 'flex', gap: '12px', marginBottom: '24px', paddingBottom: '20px', borderBottom: '1px solid var(--border)' }}>
-                      <button onClick={() => logIntervention(pt._id, 'Fluid Bolus')} className="btn" style={{ flex: 1, padding: '12px', background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text)', fontWeight: 'bold' }}>
+                      <button onClick={() => logIntervention(pt, 'Fluid Bolus')} className="btn" style={{ flex: 1, padding: '12px', background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text)', fontWeight: 'bold' }}>
                         <Plus size={16} style={{display:'inline', marginRight:'8px'}} /> Administer Fluid Bolus
                       </button>
-                      <button onClick={() => logIntervention(pt._id, 'Vasopressor Titration')} className="btn" style={{ flex: 1, padding: '12px', background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text)', fontWeight: 'bold' }}>
+                      <button onClick={() => logIntervention(pt, 'Vasopressor Titration')} className="btn" style={{ flex: 1, padding: '12px', background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text)', fontWeight: 'bold' }}>
                         <Zap size={16} style={{display:'inline', marginRight:'8px'}} /> Titrate Vasopressors
                       </button>
                       {feedback && (
@@ -543,29 +636,29 @@ const CommandCentre = () => {
                     {/* Tabs */}
                     <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
                       <button onClick={() => setActiveTab('SCHEDULE')} style={{ padding: '8px 16px', borderRadius: '100px', border: 'none', background: activeTab === 'SCHEDULE' ? 'var(--teal)' : 'var(--surface2)', color: activeTab === 'SCHEDULE' ? 'var(--bg)' : 'var(--text)', fontWeight: 'bold', cursor: 'pointer' }}>Care Schedule</button>
-                      <button onClick={() => setActiveTab('EHR')} style={{ padding: '8px 16px', borderRadius: '100px', border: 'none', background: activeTab === 'EHR' ? 'var(--cyan)' : 'var(--surface2)', color: activeTab === 'EHR' ? 'var(--bg)' : 'var(--text)', fontWeight: 'bold', cursor: 'pointer' }}>EHR Documents</button>
+                      {/* <button onClick={() => setActiveTab('EHR')} style={{ padding: '8px 16px', borderRadius: '100px', border: 'none', background: activeTab === 'EHR' ? 'var(--cyan)' : 'var(--surface2)', color: activeTab === 'EHR' ? 'var(--bg)' : 'var(--text)', fontWeight: 'bold', cursor: 'pointer' }}>EHR Documents</button> */}
                       <button onClick={() => setActiveTab('ABG')} style={{ padding: '8px 16px', borderRadius: '100px', border: 'none', background: activeTab === 'ABG' ? '#38bdf8' : 'var(--surface2)', color: activeTab === 'ABG' ? 'var(--bg)' : 'var(--text)', fontWeight: 'bold', cursor: 'pointer' }}>ABG Lab Results</button>
                     </div>
                     
                     {activeTab === 'SCHEDULE' && (
                       <CareSchedule 
-                        patientId={pt._id} 
+                        patientId={pt.patientId || pt._id} 
                         patientName={pt.name || pt.username}
                         role={user?.role}
                       />
                     )}
                     
-                    {activeTab === 'EHR' && (
+                    {/* activeTab === 'EHR' && (
                       <EHRManager 
                         patientId={pt._id} 
                         patientName={pt.name || pt.username} 
                         patientAge={pt.age}
                       />
-                    )}
+                    ) */}
                     
                     {activeTab === 'ABG' && (
                       <ABGManager 
-                        patientId={pt._id} 
+                        patientId={pt.patientId || pt._id} 
                         patientName={pt.name || pt.username}
                       />
                     )}

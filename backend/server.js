@@ -63,24 +63,9 @@ const initializeSeedData = () => {
       ward: 'ICU', assignedNurse: 'testnurse1', assignedDoctor: 'testdoctor1', admissionDate: '2026-06-01T08:30:00Z', diagnosisDate: '2026-06-02T10:15:00Z', deviceType: 'VitalPatch', batteryLevel: 95, signalQualityIndex: 98, auditLogs: []
     },
     {
-      _id: '2', patientId: 'CLA-2026-00002', username: 'testpatient2', password: patientPass, role: 'PATIENT', name: 'Priya Nair', email: 'testpatient2@cliniaura.test', age: 62, gender: 'Female', primaryDiagnosis: 'Heart Failure',
-      riskScore: 'High', activeProtocol: 'Cardiac Output Optimization', targetMAP: 70, baselineCO: 4.0, baselineSV: 55,
-      ward: 'Step-down Unit', assignedNurse: 'testnurse1', assignedDoctor: 'testdoctor1', admissionDate: '2026-06-03T14:20:00Z', diagnosisDate: '2026-06-03T15:00:00Z', deviceType: 'VitalPatch', batteryLevel: 80, signalQualityIndex: 90, auditLogs: []
-    },
-    {
-      _id: '3', patientId: 'CLA-2026-00003', username: 'RJones_G11', password: patientPass, role: 'PATIENT', name: 'Rajesh Jones', email: 'rjones@cliniaura.test', age: 55, gender: 'Male', primaryDiagnosis: 'Pneumonia',
-      riskScore: 'Moderate', activeProtocol: 'Respiratory Support', targetMAP: 70, baselineCO: 5.0, baselineSV: 70,
-      ward: 'General Ward', assignedNurse: 'testnurse2', assignedDoctor: 'testdoctor2', admissionDate: '2026-06-04T09:10:00Z', diagnosisDate: '2026-06-04T11:45:00Z', deviceType: 'Standard Monitor', batteryLevel: 100, signalQualityIndex: 100, auditLogs: []
-    },
-    {
-      _id: '4', patientId: 'CLA-2026-00004', username: 'MWilliams_W2', password: patientPass, role: 'PATIENT', name: 'Maria Williams', email: 'mwilliams@cliniaura.test', age: 71, gender: 'Female', primaryDiagnosis: 'Renal Failure',
-      riskScore: 'Medium', activeProtocol: 'Fluid Resuscitation', targetMAP: 75, baselineCO: 4.2, baselineSV: 58,
-      ward: 'ICU', assignedNurse: 'testnurse2', assignedDoctor: 'testdoctor1', admissionDate: '2026-06-02T18:00:00Z', diagnosisDate: '2026-06-03T09:30:00Z', deviceType: 'VitalPatch', batteryLevel: 65, signalQualityIndex: 85, auditLogs: []
-    },
-    {
-      _id: '5', patientId: 'CLA-2026-00005', username: 'ASmith_S4', password: patientPass, role: 'PATIENT', name: 'Alex Smith', email: 'asmith@cliniaura.test', age: 29, gender: 'Male', primaryDiagnosis: 'Post-op Recovery',
+      _id: '2', patientId: 'CLA-2026-00002', username: 'testpatient2', password: patientPass, role: 'PATIENT', name: 'Priya Nair', email: 'testpatient2@cliniaura.test', age: 62, gender: 'Female', primaryDiagnosis: 'Post-op Recovery',
       riskScore: 'Low', activeProtocol: 'Standard Observation', targetMAP: 80, baselineCO: 5.5, baselineSV: 75,
-      ward: 'General Ward', assignedNurse: 'testnurse1', assignedDoctor: 'testdoctor2', admissionDate: '2026-06-04T07:00:00Z', diagnosisDate: '2026-06-04T08:00:00Z', deviceType: 'Basic Telemetry', batteryLevel: 90, signalQualityIndex: 99, auditLogs: []
+      ward: 'General Ward', assignedNurse: 'testnurse1', assignedDoctor: 'testdoctor1', admissionDate: '2026-06-03T14:20:00Z', diagnosisDate: '2026-06-03T15:00:00Z', deviceType: 'Basic Telemetry', batteryLevel: 90, signalQualityIndex: 99, auditLogs: []
     },
     { _id: '6', username: 'testdoctor1', password: doctorPass, role: 'DOCTOR', name: 'Dr. Sarah Chen', specialty: 'Cardiology', shift: 'Morning' },
     { _id: '7', username: 'testdoctor2', password: doctorPass, role: 'DOCTOR', name: 'Dr. Marcus Webb', specialty: 'Pulmonology', shift: 'Night' },
@@ -250,10 +235,143 @@ app.put('/api/users/:id/password', async (req, res) => {
   }
 });
 
+// --- Unified Clinical Event Log (in-memory, persists per session) ---
+const CLINICAL_EVENTS = []; // { id, type, patientId, patientName, actor, actorRole, details, timestamp, acknowledged, acknowledgedBy, acknowledgedAt }
+
+const logClinicalEvent = (type, patientId, patientName, actor, actorRole, details = {}) => {
+  const event = {
+    id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+    type,         // 'ALERT', 'ABG_ALERT', 'INTERVENTION', 'NURSE_CALL', 'NURSE_NOTE', 'DOCTOR_NOTE', 'ACKNOWLEDGEMENT'
+    patientId,
+    patientName: patientName || patientId,
+    actor,
+    actorRole,
+    details,
+    timestamp: new Date().toISOString(),
+    acknowledged: false,
+    acknowledgedBy: null,
+    acknowledgedAt: null
+  };
+  CLINICAL_EVENTS.unshift(event); // newest first
+  // Also write to cryptographic audit ledger
+  AuditLogger.log(type, patientId, actor, { actorRole, patientName, ...details });
+  return event;
+};
+
+// Seed Clinical Events and Audit Ledger
+const seedClinicalEvents = () => {
+  const time = (offsetMins) => new Date(Date.now() - offsetMins * 60 * 1000).toISOString();
+  
+  const seedData = [
+    {
+      id: 'seed-6',
+      type: 'ABG_ALERT',
+      patientId: 'CLA-2026-00001',
+      patientName: 'Arjun Mehta',
+      actor: 'MedGemma-Nano',
+      actorRole: 'SYSTEM',
+      details: {
+        alert_level: 'Critical',
+        summary: 'Severe metabolic acidosis with high lactate levels, indicating significant tissue hypoperfusion.',
+        primary_concern: 'Severe Metabolic Acidosis',
+        ph: 7.21,
+        pao2_mmhg: 82,
+        paco2_mmhg: 31,
+        hco3: 12,
+        lactate: 4.8
+      },
+      timestamp: time(40),
+      acknowledged: false,
+      acknowledgedBy: null,
+      acknowledgedAt: null
+    },
+    {
+      id: 'seed-5',
+      type: 'INTERVENTION',
+      patientId: 'CLA-2026-00001',
+      patientName: 'Arjun Mehta',
+      actor: 'testdoctor1',
+      actorRole: 'DOCTOR',
+      details: { action: 'Fluid Bolus', notes: 'Administered 500mL Normal Saline over 30 mins' },
+      timestamp: time(60),
+      acknowledged: false,
+      acknowledgedBy: null,
+      acknowledgedAt: null
+    },
+    {
+      id: 'seed-4',
+      type: 'NURSE_NOTE',
+      patientId: 'CLA-2026-00001',
+      patientName: 'Arjun Mehta',
+      actor: 'testnurse1',
+      actorRole: 'NURSE',
+      details: { text: 'Responded to patient call. Patient complaining of mild shortness of breath. Adjusted bed position.', callId: '1001', callStatus: 'Active' },
+      timestamp: time(85),
+      acknowledged: false,
+      acknowledgedBy: null,
+      acknowledgedAt: null
+    },
+    {
+      id: 'seed-3',
+      type: 'NURSE_CALL',
+      patientId: 'CLA-2026-00001',
+      patientName: 'Arjun Mehta',
+      actor: 'testpatient1',
+      actorRole: 'PATIENT',
+      details: { message: 'Patient requested nurse assistance', callId: '1001' },
+      timestamp: time(90),
+      acknowledged: false,
+      acknowledgedBy: null,
+      acknowledgedAt: null
+    },
+    {
+      id: 'seed-2',
+      type: 'ACKNOWLEDGEMENT',
+      patientId: 'CLA-2026-00001',
+      patientName: 'Arjun Mehta',
+      actor: 'testnurse1',
+      actorRole: 'NURSE',
+      details: {
+        originalAlertId: 'seed-1',
+        originalMessage: 'Rule-based: Critical vitals detected (Low BP/SpO2 or High HR).'
+      },
+      timestamp: time(115),
+      acknowledged: false,
+      acknowledgedBy: null,
+      acknowledgedAt: null
+    },
+    {
+      id: 'seed-1',
+      type: 'ALERT',
+      patientId: 'CLA-2026-00001',
+      patientName: 'Arjun Mehta',
+      actor: 'RuleEngine',
+      actorRole: 'SYSTEM',
+      details: {
+        alert_level: 'CRITICAL',
+        message: 'Rule-based: Critical vitals detected (Low BP/SpO2 or High HR).',
+        vitals: { heartRate: 124, spO2: 89, bloodPressureSys: 85, bloodPressureDia: 55, respirationRate: 22 }
+      },
+      timestamp: time(120),
+      acknowledged: true,
+      acknowledgedBy: 'testnurse1',
+      acknowledgedAt: time(115)
+    }
+  ];
+
+  // Load into in-memory store (unshift/push to match sorted order)
+  seedData.forEach(e => {
+    CLINICAL_EVENTS.push(e);
+    // Also write to cryptographic ledger
+    AuditLogger.log(e.type, e.patientId, e.actor, { actorRole: e.actorRole, patientName: e.patientName, ...e.details });
+  });
+};
+seedClinicalEvents();
+
 // --- Audit API Routes ---
 app.get('/api/audit/report', (req, res) => {
   const { getAuditLedger } = require('./services/audit-logger');
-  res.json(getAuditLedger().slice(0, 100));
+  res.json(getAuditLedger().slice(0, 200));
 });
 
 app.get('/api/audit/verify', async (req, res) => {
@@ -263,10 +381,71 @@ app.get('/api/audit/verify', async (req, res) => {
 
 app.get('/api/audit/generate-pdf', async (req, res) => {
   try {
-    // Return empty mock buffer for now
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'attachment; filename=cliniaura_audit_report.pdf');
     res.send(Buffer.from('mock pdf data'));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Clinical History / Alert History API ---
+// Returns ALL clinical events: alerts, ABG alerts, interventions, nurse calls, doctor notes
+app.get('/api/clinical-history', (req, res) => {
+  const { patient_id, type } = req.query;
+  let events = [...CLINICAL_EVENTS];
+  if (patient_id) events = events.filter(e => e.patientId === patient_id || e.patientId === patient_id);
+  if (type) events = events.filter(e => e.type === type);
+  res.json(events);
+});
+
+// --- Intervention Logging API ---
+app.post('/api/interventions', (req, res) => {
+  try {
+    const { patientId, patientName, action, actor, actorRole } = req.body;
+    if (!patientId || !action) return res.status(400).json({ error: 'patientId and action required' });
+
+    const event = logClinicalEvent(
+      'INTERVENTION',
+      patientId,
+      patientName || patientId,
+      actor || 'UNKNOWN',
+      actorRole || 'DOCTOR',
+      { action, notes: req.body.notes || '' }
+    );
+
+    io.emit('clinical_event', event);
+    res.json(event);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Alert Acknowledgement API ---
+app.post('/api/alerts/acknowledge', (req, res) => {
+  try {
+    const { alertId, acknowledgedBy, acknowledgedByRole, patientId, patientName, alertMessage } = req.body;
+
+    // Mark acknowledged in CLINICAL_EVENTS if it exists
+    const event = CLINICAL_EVENTS.find(e => e.id === alertId);
+    if (event) {
+      event.acknowledged = true;
+      event.acknowledgedBy = acknowledgedBy;
+      event.acknowledgedAt = new Date().toISOString();
+    }
+
+    // Log an acknowledgement event
+    const ackEvent = logClinicalEvent(
+      'ACKNOWLEDGEMENT',
+      patientId,
+      patientName || patientId,
+      acknowledgedBy,
+      acknowledgedByRole,
+      { originalAlertId: alertId, originalMessage: alertMessage }
+    );
+
+    io.emit('alert_acknowledged', { alertId, acknowledgedBy, acknowledgedByRole, timestamp: ackEvent.timestamp });
+    res.json({ success: true, event: ackEvent });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -318,6 +497,28 @@ app.post('/api/v1/vitals/snapshot', async (req, res) => {
         if (agentResponse.alert_level === 'CRITICAL' || agentResponse.alert_level === 'HIGH') {
            const alertMsg = agentResponse.reasoning_summary || `MedGemma Alert: ${agentResponse.alert_level} Risk detected`;
            io.to('DOCTOR').to('ADMIN').to('NURSE').emit('alarm:new', { patientId: vitals.patientId, message: alertMsg, level: agentResponse.alert_level });
+           
+           // Log to unified clinical events for history and audit tracking
+           const pt = USERS.find(u => u.patientId === vitals.patientId || u._id === vitals.patientId);
+           const patientName = pt ? pt.name : vitals.patientId;
+           logClinicalEvent(
+             'ALERT',
+             vitals.patientId,
+             patientName,
+             'MedGemma-Nano',
+             'SYSTEM',
+             {
+               alert_level: agentResponse.alert_level,
+               message: alertMsg,
+               vitals: {
+                 heartRate: vitals.heartRate,
+                 spO2: vitals.spO2,
+                 bloodPressureSys: vitals.bloodPressureSys,
+                 bloodPressureDia: vitals.bloodPressureDia,
+                 respirationRate: vitals.respirationRate
+               }
+             }
+           );
         }
       }
     } catch (agentErr) {
@@ -337,6 +538,28 @@ app.post('/api/v1/vitals/snapshot', async (req, res) => {
       
       if (level) {
         io.to('DOCTOR').to('ADMIN').to('NURSE').emit('alarm:new', { patientId: vitals.patientId, message: reason, level: level });
+        
+        // Log to unified clinical events for history and audit tracking
+        const pt = USERS.find(u => u.patientId === vitals.patientId || u._id === vitals.patientId);
+        const patientName = pt ? pt.name : vitals.patientId;
+        logClinicalEvent(
+          'ALERT',
+          vitals.patientId,
+          patientName,
+          'RuleEngine',
+          'SYSTEM',
+          {
+            alert_level: level,
+            message: reason,
+            vitals: {
+              heartRate: vitals.heartRate,
+              spO2: vitals.spO2,
+              bloodPressureSys: vitals.bloodPressureSys,
+              bloodPressureDia: vitals.bloodPressureDia,
+              respirationRate: vitals.respirationRate
+            }
+          }
+        );
       }
     }
     
@@ -371,8 +594,8 @@ app.post('/api/ehr/upload', upload.single('file'), async (req, res) => {
       const blob = new Blob([fileBuffer], { type: 'application/pdf' });
       formData.append('file', blob, req.file.originalname);
 
-      // We extract API Key if sent by frontend
-      const apiKey = req.headers['x-api-key'] || 'dev-key-123';
+      // We extract API Key if sent by frontend, otherwise use the Nano MedGemma Admin Key
+      const apiKey = req.headers['x-api-key'] || 'xB3z9Bw2u8qkD5sT_1GvLw0aR6YhN4pOeZcF7mX';
       const token = req.headers.authorization ? req.headers.authorization.split(' ')[1] : 'clinician_token';
 
       const agentRes = await fetch('http://100.104.109.66:8000/api/v1/ehr/ingest', {
@@ -426,34 +649,91 @@ app.get('/api/ehr/download/:patientId', (req, res) => {
 });
 
 // --- ABG Management API ---
+const abgFile = path.join(__dirname, 'abg_history.json');
+let abgHistoryDB = [];
+try {
+  if (fs.existsSync(abgFile)) {
+    abgHistoryDB = JSON.parse(fs.readFileSync(abgFile, 'utf8'));
+  } else {
+    // Seed default ABG past history to match the clinical event list!
+    const time = (offsetMins) => new Date(Date.now() - offsetMins * 60 * 1000).toISOString();
+    abgHistoryDB = [
+      {
+        patient_id: 'CLA-2026-00001',
+        ph: 7.21,
+        pao2_mmhg: 82,
+        paco2_mmhg: 31,
+        hco3: 12,
+        base_excess: -10,
+        lactate: 4.8,
+        fio2: 0.21,
+        na: 138,
+        cl: 104,
+        chronic_copd: false,
+        summary: 'Severe metabolic acidosis with high lactate levels, indicating significant tissue hypoperfusion.',
+        clinical_significance: 'Critical tissue hypoperfusion',
+        alert_level: 'Critical',
+        primary_concern: 'Severe Metabolic Acidosis',
+        created_at: time(40),
+        agent_used: 'medgemma-api-v2'
+      }
+    ];
+    fs.writeFileSync(abgFile, JSON.stringify(abgHistoryDB, null, 2));
+  }
+} catch (e) {
+  console.error("Error loading/seeding abg_history.json", e);
+}
+
+const saveAbgHistory = () => {
+  try {
+    fs.writeFileSync(abgFile, JSON.stringify(abgHistoryDB, null, 2));
+  } catch (e) {
+    console.error("Error saving abg_history.json", e);
+  }
+};
+
 app.post('/api/abg/upload', upload.single('file'), async (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ error: 'PDF file is required' });
+    if (!req.file) return res.status(400).json({ error: 'File is required' });
+    const patientId = req.body.patient_id;
 
-    const formData = new FormData();
-    const fileBuffer = fs.readFileSync(req.file.path);
-    const blob = new Blob([fileBuffer], { type: 'application/pdf' });
-    formData.append('file', blob, req.file.originalname);
-
-    const apiKey = req.headers['x-api-key'] || 'dev-key-123';
-    const token = req.headers.authorization ? req.headers.authorization.split(' ')[1] : 'clinician_token';
-
-    const agentRes = await fetch('http://100.104.109.66:8000/api/v1/abg/upload', {
-      method: 'POST',
-      headers: {
-        'X-API-Key': apiKey,
-        'Authorization': `Bearer ${token}`
-      },
-      body: formData
-    });
-
-    if (!agentRes.ok) {
-      const errorText = await agentRes.text();
-      return res.status(agentRes.status).json({ error: 'ABG upload failed', details: errorText });
+    // JSON file support
+    if (req.file.originalname.endsWith('.json') || req.file.mimetype === 'application/json') {
+      const fileContent = fs.readFileSync(req.file.path, 'utf8');
+      try {
+        const jsonData = JSON.parse(fileContent);
+        return res.json({ success: true, extracted_fields: jsonData });
+      } catch (e) {
+        return res.status(400).json({ error: 'Invalid JSON file provided' });
+      }
     }
 
-    const agentData = await agentRes.json();
-    res.json(agentData);
+    // Proxy PDF to MedGemma-Agent on Nano
+    try {
+      const fileData = fs.readFileSync(req.file.path);
+      const blob = new Blob([fileData], { type: 'application/pdf' });
+      const formData = new FormData();
+      formData.append('file', blob, req.file.originalname);
+
+      const agentRes = await fetch(`${NANO_BASE_URL}/api/v1/abg/upload`, {
+        method: 'POST',
+        headers: { 'X-API-Key': 'xB3z9Bw2u8qkD5sT_1GvLw0aR6YhN4pOeZcF7mX' },
+        body: formData,
+        signal: AbortSignal.timeout(45000)
+      });
+
+      if (agentRes.ok) {
+        const data = await agentRes.json();
+        return res.json({ success: true, extracted_fields: data.extracted_fields || data });
+      } else {
+        const errTxt = await agentRes.text();
+        console.warn('Agent upload failed:', agentRes.status, errTxt);
+        return res.status(502).json({ error: `MedGemma Agent error (${agentRes.status}): ${errTxt.slice(0, 100)}` });
+      }
+    } catch (e) {
+      console.warn('Failed to contact MedGemma for upload:', e.message);
+      return res.status(502).json({ error: 'MedGemma Nano Offline — cannot parse PDF. Please ensure the Nano is running medgemma_api_v2.py on port 8000.' });
+    }
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -462,26 +742,101 @@ app.post('/api/abg/upload', upload.single('file'), async (req, res) => {
 app.post('/api/abg/analyze', async (req, res) => {
   try {
     const payload = req.body;
-    const apiKey = req.headers['x-api-key'] || 'dev-key-123';
-    const token = req.headers.authorization ? req.headers.authorization.split(' ')[1] : 'clinician_token';
+    const patientId = payload.patient_id;
 
-    const agentRes = await fetch('http://100.104.109.66:8000/api/v1/abg/analyze', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-API-Key': apiKey,
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify(payload)
-    });
+    let analysis;
+    let agentUsed = 'none';
 
-    if (!agentRes.ok) {
-      const errorText = await agentRes.text();
-      return res.status(agentRes.status).json({ error: 'ABG analysis failed', details: errorText });
+    // Try MedGemma-Agent (full agent, has /api/v1/abg/analyze)
+    try {
+      const agentRes = await fetch(`${NANO_BASE_URL}/api/v1/abg/analyze`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': 'xB3z9Bw2u8qkD5sT_1GvLw0aR6YhN4pOeZcF7mX'
+        },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(120000) // 120s timeout for MedGemma under swap load
+      });
+      if (agentRes.ok) {
+        analysis = await agentRes.json();
+        agentUsed = 'medgemma-agent';
+        console.log(`[ABG] MedGemma-Agent inference success for ${patientId}`);
+      } else {
+        const errBody = await agentRes.text();
+        console.warn(`[ABG] MedGemma-Agent returned ${agentRes.status}: ${errBody.slice(0,100)}`);
+        throw new Error(`Agent error ${agentRes.status}`);
+      }
+    } catch (e1) {
+      // Fallback: Try medgemma_api_v2.py at /api/v1/abg/analyze (our updated route)
+      console.log(`[ABG] Falling back to medgemma_api_v2 for ${patientId}: ${e1.message}`);
+      try {
+        const v2Res = await fetch(`${NANO_BASE_URL}/api/v1/abg/analyze`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(120000) // 120s timeout for fallback under swap load
+        });
+        if (v2Res.ok) {
+          analysis = await v2Res.json();
+          agentUsed = 'medgemma-api-v2';
+          console.log(`[ABG] medgemma_api_v2 inference success for ${patientId}`);
+        } else {
+          throw new Error(`v2 error ${v2Res.status}`);
+        }
+      } catch (e2) {
+        console.warn(`[ABG] Both Nano APIs failed for ${patientId}:`, e2.message);
+        analysis = {
+          summary: 'MedGemma Nano is offline — no AI inference available. This is a placeholder result.',
+          clinical_significance: 'N/A — Nano offline',
+          alert_level: 'Unknown',
+          primary_concern: 'N/A — Nano offline',
+          rule_based_only: true
+        };
+      }
     }
 
-    const agentData = await agentRes.json();
-    res.json(agentData);
+    const result = {
+      ...payload,
+      ...analysis,
+      patient_id: patientId, // ensure consistent field
+      created_at: new Date().toISOString(),
+      agent_used: agentUsed
+    };
+    abgHistoryDB.push(result);
+    saveAbgHistory();
+
+    if (result.alert_level === 'Critical' || result.alert_level === 'High') {
+      const alertMsg = `ABG Alert (${result.alert_level}): ${result.primary_concern || result.summary}`;
+      io.emit('alarm:escalation', {
+        patientId: patientId,
+        message: alertMsg,
+        level: 'CRITICAL',
+        timestamp: new Date().toISOString()
+      });
+      // Log to unified clinical events for history tracking
+      logClinicalEvent(
+        'ABG_ALERT',
+        patientId,
+        payload.patient_name || patientId,
+        'MedGemma-Nano',
+        'SYSTEM',
+        {
+          alert_level: result.alert_level,
+          summary: result.summary,
+          primary_concern: result.primary_concern,
+          clinical_significance: result.clinical_significance,
+          ph: payload.ph,
+          pao2_mmhg: payload.pao2_mmhg,
+          paco2_mmhg: payload.paco2_mmhg,
+          hco3: payload.hco3,
+          lactate: payload.lactate
+        }
+      );
+      console.log(`[ABG] Escalation logged for patient ${patientId} - ${result.alert_level}`);
+    }
+
+    res.json(result);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -490,26 +845,11 @@ app.post('/api/abg/analyze', async (req, res) => {
 app.get('/api/abg/history', async (req, res) => {
   try {
     const { patient_id } = req.query;
-    const apiKey = req.headers['x-api-key'] || 'dev-key-123';
-    const token = req.headers.authorization ? req.headers.authorization.split(' ')[1] : 'clinician_token';
-    
-    let url = 'http://127.0.0.1:8000/api/v1/abg/history';
-    if (patient_id) url += `?patient_id=${patient_id}`;
-
-    const agentRes = await fetch(url, {
-      headers: {
-        'X-API-Key': apiKey,
-        'Authorization': `Bearer ${token}`
-      }
-    });
-
-    if (!agentRes.ok) {
-      const errorText = await agentRes.text();
-      return res.status(agentRes.status).json({ error: 'Failed to fetch ABG history', details: errorText });
-    }
-
-    const agentData = await agentRes.json();
-    res.json(agentData);
+    // Support lookup by CLA ID or numeric _id (match either way)
+    const history = patient_id
+      ? abgHistoryDB.filter(h => h.patient_id === patient_id)
+      : abgHistoryDB;
+    res.json(history.slice().reverse()); // newest first
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -517,7 +857,24 @@ app.get('/api/abg/history', async (req, res) => {
 
 // --- State for Features ---
 const CARE_SCHEDULES = {};
-const PATIENT_CALLS = [];
+
+const callsFile = path.join(__dirname, 'patient_calls.json');
+let PATIENT_CALLS = [];
+try {
+  if (fs.existsSync(callsFile)) {
+    PATIENT_CALLS = JSON.parse(fs.readFileSync(callsFile, 'utf8'));
+  }
+} catch (e) {
+  console.error("Error loading patient_calls.json", e);
+}
+
+const savePatientCalls = () => {
+  try {
+    fs.writeFileSync(callsFile, JSON.stringify(PATIENT_CALLS, null, 2));
+  } catch (e) {
+    console.error("Error saving patient_calls.json", e);
+  }
+};
 
 app.get('/api/care-schedule/:patientId', (req, res) => {
   res.json(CARE_SCHEDULES[req.params.patientId] || []);
@@ -539,9 +896,31 @@ app.post('/api/patient-calls', (req, res) => {
     patientName: req.body.patientName,
     timestamp: new Date().toISOString(),
     status: 'Active',
-    notes: ''
+    notes: []
   };
   PATIENT_CALLS.push(newCall);
+  savePatientCalls();
+
+  // Log to unified clinical event history
+  logClinicalEvent(
+    'NURSE_CALL',
+    newCall.patientId,
+    newCall.patientName,
+    req.body.requestedBy || 'PATIENT',
+    'PATIENT',
+    { message: 'Patient requested nurse assistance', callId: newCall.id }
+  );
+
+  // Emit generic patient call alert for PatientCalls.jsx
+  io.emit('patient_call_alert', newCall);
+  
+  // Emit alarm:escalation for Escalation Desk in CommandCentre.jsx
+  io.emit('alarm:escalation', {
+    patientId: newCall.patientId,
+    message: `Patient Assistance Requested: ${newCall.patientName}`,
+    level: 'HIGH'
+  });
+
   res.json(newCall);
 });
 
@@ -549,7 +928,33 @@ app.put('/api/patient-calls/:id', (req, res) => {
   const call = PATIENT_CALLS.find(c => c.id === req.params.id);
   if (call) {
     call.status = req.body.status || call.status;
-    call.notes = req.body.notes !== undefined ? req.body.notes : call.notes;
+    if (req.body.note) {
+      if (!Array.isArray(call.notes)) call.notes = [];
+      call.notes.push(req.body.note);
+      // Log note to unified history
+      const noteType = req.body.note.role === 'DOCTOR' ? 'DOCTOR_NOTE' : 'NURSE_NOTE';
+      logClinicalEvent(
+        noteType,
+        call.patientId,
+        call.patientName,
+        req.body.note.author || req.body.note.role,
+        req.body.note.role,
+        { text: req.body.note.text, callId: call.id, callStatus: call.status }
+      );
+    }
+    if (req.body.status && req.body.status !== 'Active') {
+      logClinicalEvent(
+        'NURSE_CALL_UPDATE',
+        call.patientId,
+        call.patientName,
+        req.body.resolvedBy || 'STAFF',
+        req.body.resolvedByRole || 'NURSE',
+        { newStatus: req.body.status, callId: call.id }
+      );
+    }
+    
+    savePatientCalls();
+    io.emit('patient_call_alert', call);
     res.json(call);
   } else {
     res.status(404).json({ error: 'Call not found' });

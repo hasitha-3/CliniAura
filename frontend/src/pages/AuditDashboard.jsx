@@ -10,9 +10,10 @@ const AuditDashboard = () => {
   // Search and Filtering states
   const [searchTerm, setSearchTerm] = useState('');
   const [eventTypeFilter, setEventTypeFilter] = useState('ALL');
+  const [expandedRow, setExpandedRow] = useState(null);
 
   useEffect(() => {
-    const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://10.2.195.143:5000';
+    const API_URL = import.meta.env.VITE_BACKEND_URL || `${window.location.protocol}//${window.location.hostname}:5000`;
     const token = JSON.parse(localStorage.getItem('cliniaura_user'))?.token;
 
     fetch(`${API_URL}/api/audit/report`, {
@@ -34,7 +35,7 @@ const AuditDashboard = () => {
 
   const handleVerify = async () => {
     try {
-      const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://10.2.195.143:5000';
+      const API_URL = import.meta.env.VITE_BACKEND_URL || `${window.location.protocol}//${window.location.hostname}:5000`;
       const token = JSON.parse(localStorage.getItem('cliniaura_user'))?.token;
       
       const res = await fetch(`${API_URL}/api/audit/verify`, {
@@ -48,7 +49,7 @@ const AuditDashboard = () => {
   };
 
   const handleDownloadPDF = () => {
-    const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://10.2.195.143:5000';
+    const API_URL = import.meta.env.VITE_BACKEND_URL || `${window.location.protocol}//${window.location.hostname}:5000`;
     // Passing token via query string or directly triggering secure tab
     window.open(`${API_URL}/api/audit/generate-pdf`, '_blank');
   };
@@ -211,46 +212,72 @@ const AuditDashboard = () => {
             </thead>
             <tbody>
               {filteredRecords.map((record, index) => {
-                const isAlarm = record.eventType.includes('ALARM');
+                const isAlarm = record.eventType.includes('ALERT') || record.eventType.includes('ALARM');
                 const isSystem = record.eventType.includes('SYSTEM') || record.eventType.includes('REGISTER');
                 const typeColor = isAlarm ? '#ff4d6a' : isSystem ? 'var(--teal)' : '#38bdf8';
                 const typeBg = isAlarm ? 'rgba(255,77,106,0.1)' : isSystem ? 'rgba(0,212,170,0.1)' : 'rgba(56,189,248,0.1)';
+                const isExpanded = expandedRow === index;
 
                 return (
-                  <tr 
-                    key={record._id || index} 
-                    style={{ borderBottom: '1px solid rgba(255,255,255,0.03)', transition: 'background 0.2s' }}
-                    onMouseOver={e => e.currentTarget.style.background = 'rgba(0,212,170,0.02)'}
-                    onMouseOut={e => e.currentTarget.style.background = 'transparent'}
-                  >
-                    <td style={{ padding: '14px 18px', color: 'var(--text-dim)', fontFamily: 'monospace' }}>
-                      {new Date(record.timestamp).toLocaleString()}
-                    </td>
-                    <td style={{ padding: '14px 18px' }}>
-                      <span style={{ 
-                        padding: '4px 8px', 
-                        borderRadius: '6px', 
-                        background: typeBg, 
-                        color: typeColor, 
-                        fontWeight: 'bold', 
-                        fontSize: '0.75rem',
-                        display: 'inline-block' 
-                      }}>
-                        {record.eventType}
-                      </span>
-                    </td>
-                    <td style={{ padding: '14px 18px', fontWeight: '500', color: 'var(--text)' }}>
-                      {record.patientId || <span style={{color:'var(--text-muted)'}}>GLOBAL_SCOPE</span>}
-                    </td>
-                    <td style={{ padding: '14px 18px', color: record.userId ? 'var(--text)' : 'var(--text-muted)' }}>
-                      {record.userId || 'SYSTEM_CORE'}
-                    </td>
-                    <td style={{ padding: '14px 18px', fontFamily: 'monospace', color: 'var(--text-muted)' }} title={record.currentHash}>
-                      <span style={{background:'var(--bg2)', padding:'2px 6px', borderRadius:'4px', border:'1px solid var(--border)'}}>
-                        {record.currentHash ? `${record.currentHash.substring(0, 20)}...` : 'HASH_PENDING'}
-                      </span>
-                    </td>
-                  </tr>
+                  <React.Fragment key={record._id || index}>
+                    <tr 
+                      onClick={() => setExpandedRow(isExpanded ? null : index)}
+                      style={{ borderBottom: '1px solid rgba(255,255,255,0.03)', transition: 'background 0.2s', cursor: 'pointer', background: isExpanded ? 'rgba(0,212,170,0.03)' : 'transparent' }}
+                      onMouseOver={e => { if(!isExpanded) e.currentTarget.style.background = 'rgba(0,212,170,0.02)'; }}
+                      onMouseOut={e => { if(!isExpanded) e.currentTarget.style.background = 'transparent'; }}
+                    >
+                      <td style={{ padding: '14px 18px', color: 'var(--text-dim)', fontFamily: 'monospace' }}>
+                        {new Date(record.timestamp).toLocaleString()}
+                      </td>
+                      <td style={{ padding: '14px 18px' }}>
+                        <span style={{ 
+                          padding: '4px 8px', 
+                          borderRadius: '6px', 
+                          background: typeBg, 
+                          color: typeColor, 
+                          fontWeight: 'bold', 
+                          fontSize: '0.75rem',
+                          display: 'inline-block' 
+                        }}>
+                          {record.eventType}
+                        </span>
+                      </td>
+                      <td style={{ padding: '14px 18px', fontWeight: '500', color: 'var(--text)' }}>
+                        {record.patientId || <span style={{color:'var(--text-muted)'}}>GLOBAL_SCOPE</span>}
+                      </td>
+                      <td style={{ padding: '14px 18px', color: record.userId ? 'var(--text)' : 'var(--text-muted)' }}>
+                        {record.userId || 'SYSTEM_CORE'}
+                      </td>
+                      <td style={{ padding: '14px 18px', fontFamily: 'monospace', color: 'var(--text-muted)' }} title={record.currentHash}>
+                        <span style={{background:'var(--bg2)', padding:'2px 6px', borderRadius:'4px', border:'1px solid var(--border)'}}>
+                          {record.currentHash ? `${record.currentHash.substring(0, 20)}...` : 'HASH_PENDING'}
+                        </span>
+                      </td>
+                    </tr>
+                    {isExpanded && (
+                      <tr style={{ background: 'rgba(15, 23, 42, 0.4)' }}>
+                        <td colSpan="5" style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', animation: 'fade-up 0.2s ease' }}>
+                            <div>
+                              <strong style={{ color: 'var(--teal)', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Cryptographic Proof Chain</strong>
+                              <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr', gap: '8px', marginTop: '6px', fontSize: '0.8rem', fontFamily: 'monospace' }}>
+                                <div style={{ color: 'var(--text-muted)' }}>Previous Block Hash:</div>
+                                <div style={{ color: 'var(--text-dim)', wordBreak: 'break-all' }}>{record.previousHash}</div>
+                                <div style={{ color: 'var(--text-muted)' }}>Current Block Hash:</div>
+                                <div style={{ color: 'var(--text)', wordBreak: 'break-all', fontWeight: '600' }}>{record.currentHash}</div>
+                              </div>
+                            </div>
+                            <div>
+                              <strong style={{ color: 'var(--cyan)', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Verifiable Block Data Payload</strong>
+                              <pre style={{ margin: '6px 0 0 0', padding: '12px', background: 'rgba(5, 10, 16, 0.6)', borderRadius: '6px', border: '1px solid var(--border)', fontSize: '0.75rem', color: 'var(--text-dim)', overflowX: 'auto', fontFamily: 'monospace', lineHeight: '1.4' }}>
+                                {JSON.stringify(record.data, null, 2)}
+                              </pre>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
                 );
               })}
               {filteredRecords.length === 0 && (

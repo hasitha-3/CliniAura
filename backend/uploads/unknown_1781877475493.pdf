@@ -1,0 +1,9 @@
+{
+  "patient_id": "2",
+  "ph": 7.40,
+  "pao2_mmhg": 95.0,
+  "paco2_mmhg": 40.0,
+  "hco3": 24.0,
+  "base_excess": 0.0,
+  "lactate": 0.8
+}
