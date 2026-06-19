@@ -1,3 +1,6 @@
+fix_ip.cjs
+revert_tailscale.cjs
+
 # Logs
 logs
 *.log
