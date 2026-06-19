@@ -1,4 +1,6 @@
 node_modules/
+uploads/
+abg_history.json
 .env
 logs
 *.log
