@@ -242,7 +242,7 @@ const SettingsPage = () => {
   // Fetch MedGemma Health Status
   useEffect(() => {
     if (user?.role === 'DOCTOR' || user?.role === 'ADMIN') {
-      fetch('http://100.104.109.66:8000/health')
+      fetch('http://100.88.162.102:8000/health')
         .then(res => res.json())
         .then(data => setHealth(data))
         .catch(() => setHealth({ status: 'unreachable' }));
@@ -1083,13 +1083,13 @@ const DoctorDashboard = () => {
         socket.on('vitals_update', handleVitals);
       }
       
-      // Continuously poll the Jetson Nano Edge API for live telemetry
+      // Continuously poll the Mac Mini Edge API for live telemetry
       if (window.doctorDemoInterval) clearInterval(window.doctorDemoInterval);
-      window.doctorDemoInterval = setInterval(async () => {
+      const miniInterval = setInterval(async () => {
         try {
-          const nanoRes = await fetch('http://100.104.109.66:8000/dashboard/live');
-          if (nanoRes.ok) {
-            const liveData = await nanoRes.json();
+          const miniRes = await fetch('http://100.88.162.102:8000/dashboard/live');
+          if (miniRes.ok) {
+            const liveData = await miniRes.json();
             const myData = liveData.find(d => d.patient_id === selectedPatient._id || d.patient_id === selectedPatient.username);
             
             if (myData) {
@@ -1120,6 +1120,7 @@ const DoctorDashboard = () => {
           // Silently ignore connection errors
         }
       }, 2000);
+      window.doctorDemoInterval = miniInterval;
     }
     return () => {
        if (socket) socket.off('vitals_update', handleVitals);
@@ -1391,12 +1392,12 @@ const PatientDashboard = () => {
                    const firstDummy = generateDummyVitals(me._id, window.lastPatVitals);
                    window.lastPatVitals = firstDummy;
                    
-                   // Fallback to Jetson Nano Edge Polling
-                   window.patientDemoInterval = setInterval(async () => {
+                   // Fallback to Mac Mini Edge Polling
+                   const miniInterval = setInterval(async () => {
                      try {
-                       const nanoRes = await fetch('http://100.104.109.66:8000/dashboard/live');
-                       if (nanoRes.ok) {
-                         const liveData = await nanoRes.json();
+                       const miniRes = await fetch('http://100.88.162.102:8000/dashboard/live');
+                       if (miniRes.ok) {
+                         const liveData = await miniRes.json();
                          const myData = liveData.find(d => d.patient_id === me._id || d.patient_id === me.username);
                          if (myData) {
                            setLatestVitals({
@@ -1411,13 +1412,14 @@ const PatientDashboard = () => {
                              fallDetected: false,
                              ecgAnomaly: false
                            });
-                           return; // Skip dummy if Nano succeeds
+                           return; // Skip dummy if Mini succeeds
                          }
                        }
                      } catch (e) {
                        // Silently ignore errors
                      }
                    }, 3000);
+                   window.patientDemoInterval = miniInterval;
                    return firstDummy;
                  }
                  return current;

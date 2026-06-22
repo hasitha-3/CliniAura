@@ -54,13 +54,13 @@ const CommandCentre = () => {
         // Dummy interval fallback logic has been disabled here since Nano is the source of truth
       });
 
-    // --- NEW: Jetson Nano Edge API Polling (Always runs) ---
-    const NANO_API = 'http://100.104.109.66:8000/dashboard/live';
-    const nanoIntervalId = setInterval(async () => {
+    // --- NEW: Mac Mini Edge API Polling (Always runs) ---
+    const MINI_API = 'http://100.88.162.102:8000/dashboard/live';
+    const miniIntervalId = setInterval(async () => {
       try {
-        const nanoRes = await fetch(NANO_API);
-        if (nanoRes.ok) {
-          const liveData = await nanoRes.json();
+        const miniRes = await fetch(MINI_API);
+        if (miniRes.ok) {
+          const liveData = await miniRes.json();
           
           liveData.forEach(pData => {
             const vitals = {
@@ -87,7 +87,7 @@ const CommandCentre = () => {
             if (pData.assessment) {
               setPatients(prevPts => prevPts.map(pt => 
                 pt.username === pData.patient_id || pt._id === pData.patient_id 
-                  ? { ...pt, nanoAssessment: pData.assessment } 
+                  ? { ...pt, miniAssessment: pData.assessment } 
                   : pt
               ));
             }
@@ -98,7 +98,7 @@ const CommandCentre = () => {
       }
     }, 2000);
     
-    window.dummyIntervalId = nanoIntervalId;
+    window.dummyIntervalId = miniIntervalId;
 
     const socket = io(API_URL, { auth: { token, role: user?.role } });
     
@@ -504,65 +504,69 @@ const CommandCentre = () => {
                       </div>
                       
                       {/* AI ASSISTANT PANEL */}
-                      <div className="glass-panel" style={{ padding: '12px', display: 'flex', flexDirection: 'column', marginBottom: '12px', background: 'var(--surface2)', border: '1px solid var(--border)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', color: 'var(--teal)', fontSize: '0.85rem', fontWeight: 'bold' }}>
-                          <Zap size={14} /> Edge AI Assessment
-                        </div>
-                        <div style={{ background: 'var(--bg)', padding: '10px', borderRadius: '6px', fontSize: '0.8rem', lineHeight: '1.4', color: 'var(--text-dim)', flex: 1, overflowY: 'auto', maxHeight: '100px' }}>
-                          {(() => {
-                            let text = pt.nanoAssessment ? pt.nanoAssessment : "Stable telemetry stream. No acute intervention required at this moment.";
-                            if (text.includes('MOCK INFERENCE')) {
-                              text = "AI analysis pending...";
-                            }
-                            // Simple markdown bold parsing: replace **text** with <strong>text</strong>
-                            const parts = text.split(/(\*\*.*?\*\*)/g);
-                            return parts.map((part, index) => {
-                              if (part.startsWith('**') && part.endsWith('**')) {
-                                return <strong key={index} style={{ color: 'var(--text)' }}>{part.slice(2, -2)}</strong>;
+                      <div style={{ marginBottom: '12px' }}>
+                        <div className="glass-panel" style={{ padding: '12px', display: 'flex', flexDirection: 'column', background: 'linear-gradient(135deg, rgba(0,212,170,0.05) 0%, rgba(0,212,170,0.02) 100%)', border: '1px solid rgba(0,212,170,0.3)', borderRadius: '10px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--teal)', fontSize: '0.8rem', fontWeight: '600' }}>
+                              <Zap size={13} />
+                              Mac Mini · MedGemma AI
+                            </div>
+                            {pt.miniAssessment && !pt.miniAssessment.includes('MOCK') ? (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.7rem', color: '#22c55e' }}>
+                                <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#22c55e', animation: 'pulse 2s infinite' }} />
+                                Live
+                              </div>
+                            ) : (
+                              <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>Awaiting inference...</div>
+                            )}
+                          </div>
+                          <div style={{ background: 'rgba(0,0,0,0.2)', padding: '10px 12px', borderRadius: '8px', fontSize: '0.78rem', lineHeight: '1.6', color: pt.miniAssessment && !pt.miniAssessment.includes('MOCK') ? 'var(--text)' : 'var(--text-dim)', minHeight: '48px', fontStyle: pt.miniAssessment && !pt.miniAssessment.includes('MOCK') ? 'normal' : 'italic' }}>
+                            {(() => {
+                              const raw = pt.miniAssessment || '';
+                              if (!raw || raw.includes('MOCK INFERENCE')) {
+                                return 'Awaiting next MedGemma inference cycle...';
                               }
-                              return part;
-                            });
-                          })()}
+                              const clean = raw
+                                .replace(/\*\*(.*?)\*\*/g, '$1')
+                                .replace(/\*(.*?)\*/g, '$1')
+                                .replace(/#+\s/g, '')
+                                .replace(/---+/g, '')
+                                .replace(/\n{3,}/g, '\n\n')
+                                .trim();
+                              const sentences = clean.split(/(?<=[.!?])\s+/);
+                              return sentences.slice(0, 3).join(' ');
+                            })()}
+                          </div>
+                          <button
+                            onClick={() => {
+                              const printWindow = window.open('', '_blank');
+                              const dateStr = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+                              const assessmentText = pt.miniAssessment
+                                ? pt.miniAssessment.replace(/MOCK INFERENCE:\s*/g, '').replace(/\*\*/g, '')
+                                : 'Stable telemetry stream.';
+                              const mapVal = v ? Math.round((v.bloodPressureSys + (2 * v.bloodPressureDia)) / 3) : '--';
+                              printWindow.document.write(
+                                '<html><head><title>MedGemma Assessment</title>' +
+                                '<style>body{font-family:sans-serif;padding:20px;line-height:1.6}h1{color:#333;border-bottom:2px solid #333;padding-bottom:10px}.section{margin-bottom:20px}</style>' +
+                                '</head><body>' +
+                                '<h1>MedGemma Clinical Assessment</h1>' +
+                                '<div class="section"><strong>Patient:</strong> ' + (pt.name || pt.username) + ' (' + (pt.patientId || 'N/A') + ')<br>' +
+                                '<strong>Date:</strong> ' + dateStr + '</div>' +
+                                '<div class="section"><h2>Vitals Snapshot</h2>' +
+                                'HR: ' + (v?.heartRate || '--') + ' bpm | SpO2: ' + (v?.spO2 || '--') + '% | MAP: ' + mapVal + ' mmHg</div>' +
+                                '<div class="section"><h2>Assessment</h2><p>' + assessmentText + '</p></div>' +
+                                '<script>window.print();window.close();<\/script></body></html>'
+                              );
+                              printWindow.document.close();
+                            }}
+                            style={{ marginTop: '8px', alignSelf: 'flex-start', padding: '6px 12px', background: 'rgba(0,212,170,0.1)', color: 'var(--teal)', border: '1px solid var(--teal)', borderRadius: '4px', fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                          >
+                            <FileText size={12} /> Download PDF
+                          </button>
+
                         </div>
-                        <button 
-                          onClick={() => {
-                            const printWindow = window.open('', '_blank');
-                            printWindow.document.write(`
-                              <html>
-                                <head>
-                                  <title>MedGemma Assessment - ${pt.name || pt.username}</title>
-                                  <style>
-                                    body { font-family: sans-serif; padding: 20px; line-height: 1.6; }
-                                    h1 { color: #333; border-bottom: 2px solid #333; padding-bottom: 10px; }
-                                    .section { margin-bottom: 20px; }
-                                  </style>
-                                </head>
-                                <body>
-                                  <h1>MedGemma Clinical Assessment</h1>
-                                  <div class="section">
-                                    <strong>Patient:</strong> ${pt.name || pt.username} (${pt.patientId || 'N/A'})<br>
-                                    <strong>Date:</strong> ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}
-                                  </div>
-                                  <div class="section">
-                                    <h2>Vitals Snapshot</h2>
-                                    HR: ${v?.heartRate || '--'} bpm | SpO2: ${v?.spO2 || '--'}% | MAP: ${v ? Math.round((v.bloodPressureSys + (2 * v.bloodPressureDia)) / 3) : '--'} mmHg
-                                  </div>
-                                  <div class="section">
-                                    <h2>Assessment</h2>
-                                    <p>${pt.nanoAssessment ? pt.nanoAssessment.replace(/MOCK INFERENCE:\\s*/g, '').replace(/\\*\\*/g, '') : "Stable telemetry stream."}</p>
-                                  </div>
-                                  <script>window.print(); window.close();</script>
-                                </body>
-                              </html>
-                            `);
-                            printWindow.document.close();
-                          }}
-                          style={{ marginTop: '8px', alignSelf: 'flex-start', padding: '6px 12px', background: 'rgba(0,212,170,0.1)', color: 'var(--teal)', border: '1px solid var(--teal)', borderRadius: '4px', fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', transition: 'all 0.2s' }}
-                        >
-                          <FileText size={12} /> Download PDF
-                        </button>
                       </div>
-                    </div>
+
 
                     {/* Action Drawers / State Logging Buttons */}
                     <div style={{ borderTop: '1px solid var(--border)', paddingTop: '12px', marginTop: 'auto' }}>
@@ -590,7 +594,8 @@ const CommandCentre = () => {
                     </div>
 
                   </div>
-                );
+                </div>
+              );
               })}
             </div>
           )}

@@ -128,7 +128,7 @@ app.post('/api/login', async (req, res) => {
 
 // --- API Routes ---
 // --- NANO API PROXY ENDPOINTS ---
-const NANO_BASE_URL = 'http://100.104.109.66:8000';
+const NANO_BASE_URL = 'http://100.88.162.102:8000';
 
 app.get('/api/nano/health', async (req, res) => {
   try {
@@ -598,7 +598,7 @@ app.post('/api/ehr/upload', upload.single('file'), async (req, res) => {
       const apiKey = req.headers['x-api-key'] || 'xB3z9Bw2u8qkD5sT_1GvLw0aR6YhN4pOeZcF7mX';
       const token = req.headers.authorization ? req.headers.authorization.split(' ')[1] : 'clinician_token';
 
-      const agentRes = await fetch('http://100.104.109.66:8000/api/v1/ehr/ingest', {
+      const agentRes = await fetch('http://100.88.162.102:8000/api/v1/ehr/ingest', {
         method: 'POST',
         headers: {
           'X-API-Key': apiKey,
@@ -756,7 +756,7 @@ app.post('/api/abg/analyze', async (req, res) => {
           'X-API-Key': 'xB3z9Bw2u8qkD5sT_1GvLw0aR6YhN4pOeZcF7mX'
         },
         body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(120000) // 120s timeout for MedGemma under swap load
+        signal: AbortSignal.timeout(300000) // 300s timeout for MedGemma under swap load
       });
       if (agentRes.ok) {
         analysis = await agentRes.json();
@@ -775,7 +775,7 @@ app.post('/api/abg/analyze', async (req, res) => {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
-          signal: AbortSignal.timeout(120000) // 120s timeout for fallback under swap load
+          signal: AbortSignal.timeout(300000) // 300s timeout for fallback under swap load
         });
         if (v2Res.ok) {
           analysis = await v2Res.json();

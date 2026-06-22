@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Upload, FileText, CheckCircle, AlertTriangle, Activity, Download, Loader2, Eye } from 'lucide-react';
 
-const NANO_ABG_API = 'http://100.104.109.66:8000';
-const NANO_API_KEY = 'xB3z9Bw2u8qkD5sT_1GvLw0aR6YhN4pOeZcF7mX';
+const MINI_ABG_API = 'http://100.88.162.102:8000';
+const MINI_API_KEY = 'xB3z9Bw2u8qkD5sT_1GvLw0aR6YhN4pOeZcF7mX';
 
 const ABGManager = ({ patientId, patientName }) => {
   const [file, setFile] = useState(null);
@@ -71,6 +71,8 @@ const ABGManager = ({ patientId, patientName }) => {
     if (!uploadResult) return;
     setIsAnalyzing(true);
     setError(null);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 300000); // 5 min timeout for MedGemma on Mini
     try {
       const fields = uploadResult.extracted_fields || {};
       const payload = {
@@ -89,15 +91,21 @@ const ABGManager = ({ patientId, patientName }) => {
       const res = await fetch(`${API_URL}/api/abg/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
+        signal: controller.signal
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Analysis failed');
       setAnalysisResult(data);
       fetchHistory();
     } catch (err) {
-      setError(err.message);
+      if (err.name === 'AbortError') {
+        setError('MedGemma inference timed out (5 min). The Mac Mini may be under heavy load — please try again.');
+      } else {
+        setError(err.message);
+      }
     } finally {
+      clearTimeout(timeout);
       setIsAnalyzing(false);
     }
   };
@@ -194,7 +202,7 @@ const ABGManager = ({ patientId, patientName }) => {
             <p>${d.summary || 'No summary available.'}</p>
           </div>
           <div class="section">
-            <h2>AI Insights (MedGemma via Jetson Nano)</h2>
+            <h2>AI Insights (MedGemma via Mac Mini)</h2>
             <div><span class="label">Clinical Significance:</span> ${d.clinical_significance || 'N/A'}</div>
             <div><span class="label">Primary Concern:</span> ${d.primary_concern || 'N/A'}</div>
             ${d.contributing_factors ? `<div><span class="label">Contributing Factors:</span> ${Array.isArray(d.contributing_factors) ? d.contributing_factors.join(', ') : d.contributing_factors}</div>` : ''}
@@ -224,7 +232,7 @@ const ABGManager = ({ patientId, patientName }) => {
     <div style={{ background: 'var(--surface2)', padding: '16px', borderRadius: '8px', border: '1px solid var(--border)', marginTop: '8px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', color: 'var(--teal)' }}>
         <Activity size={18} />
-        <h3 style={{ margin: 0, fontSize: '1rem' }}>ABG Analyzer (MedGemma via Nano)</h3>
+        <h3 style={{ margin: 0, fontSize: '1rem' }}>ABG Analyzer (MedGemma via Mac Mini)</h3>
       </div>
 
       {error && (
@@ -359,7 +367,7 @@ const ABGManager = ({ patientId, patientName }) => {
         <div style={{ marginTop: '16px', borderTop: '1px solid var(--border)', paddingTop: '12px' }}>
           <h4 style={{ fontSize: '0.85rem', margin: '0 0 8px 0', color: 'var(--text-muted)' }}>Past ABG History</h4>
           <div style={{ maxHeight: '220px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {history.map((item, idx) => (
+            {history.filter(item => item.summary && !item.summary.includes('Failed') && !item.summary.includes('aborted')).map((item, idx) => (
               <div key={item.abg_id || item.created_at || idx} style={{ fontSize: '0.75rem', background: 'rgba(255,255,255,0.02)', padding: '8px', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.05)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                   <div>
@@ -443,7 +451,7 @@ const ABGManager = ({ patientId, patientName }) => {
               </div>
 
               <div style={{ marginBottom: '20px', background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                <h2 style={{ color: '#2563eb', fontSize: '1rem', marginTop: 0 }}>AI Insights (MedGemma via Jetson Nano)</h2>
+                <h2 style={{ color: '#2563eb', fontSize: '1rem', marginTop: 0 }}>AI Insights (MedGemma via Mac Mini)</h2>
                 <div style={{ marginBottom: '8px' }}><strong>Clinical Significance:</strong> {pdfViewData.clinical_significance || 'N/A'}</div>
                 <div style={{ marginBottom: '8px' }}><strong>Primary Concern:</strong> {pdfViewData.primary_concern || 'N/A'}</div>
                 {pdfViewData.contributing_factors && (
