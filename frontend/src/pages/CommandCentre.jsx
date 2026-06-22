@@ -343,7 +343,7 @@ const CommandCentre = () => {
                     <div style={{ fontSize: '0.9rem', fontWeight: 'bold' }}>
                       {pt?.name || 'Unknown Patient'} <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>({pt?.patientId || alert.patient_id})</span>
                     </div>
-                    <div style={{ fontSize: '0.8rem', color: '#ff8093' }}>{alert.message}</div>
+                    <div style={{ fontSize: '0.8rem', color: '#ff4d6a', fontWeight: '500' }}>{alert.message}</div>
                     <button onClick={() => acknowledgeWithLog(alert.id, pt, alert.message)} style={{ marginTop: '8px', width: '100%', fontSize: '0.75rem', background: '#ff4d6a', color: 'white', border: 'none', padding: '4px', borderRadius: '4px', cursor: 'pointer' }}>Acknowledge</button>
                   </div>
                 );
@@ -458,7 +458,7 @@ const CommandCentre = () => {
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '8px', background: 'var(--bg2)', padding: '10px', borderRadius: '10px', border: '1px solid rgba(0,212,170,0.05)' }}>
                         <div style={{ textAlign: 'center' }}>
                           <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Heart Rate</div>
-                          <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: v?.heartRate > 100 ? '#ff4d6a' : 'var(--text)' }}>
+                          <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: (v?.heartRate < 50 || v?.heartRate > 100) ? '#ff4d6a' : 'var(--text)' }}>
                             {v?.heartRate || '--'} <span style={{fontSize:'0.65rem', fontWeight:'normal', color:'var(--text-muted)'}}>bpm</span>
                           </div>
                         </div>
@@ -470,7 +470,7 @@ const CommandCentre = () => {
                         </div>
                         <div style={{ textAlign: 'center' }}>
                           <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Calc MAP</div>
-                          <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: 'var(--cyan)' }}>
+                          <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: (v ? Math.round((v.bloodPressureSys + (2 * v.bloodPressureDia)) / 3) : 0) < 65 || (v ? Math.round((v.bloodPressureSys + (2 * v.bloodPressureDia)) / 3) : 0) > 110 ? '#ff4d6a' : 'var(--cyan)' }}>
                             {v ? Math.round((v.bloodPressureSys + (2 * v.bloodPressureDia)) / 3) : '--'} <span style={{fontSize:'0.65rem', fontWeight:'normal', color:'var(--text-muted)'}}>mmHg</span>
                           </div>
                         </div>

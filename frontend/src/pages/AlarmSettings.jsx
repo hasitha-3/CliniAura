@@ -15,7 +15,7 @@ const AlarmSettings = () => {
   const [saveSuccess, setSaveSuccess] = useState(false);
 
   useEffect(() => {
-    const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://10.2.195.143:5000';
+    const API_URL = import.meta.env.VITE_BACKEND_URL || `${window.location.protocol}//${window.location.hostname}:5000`;
     const token = JSON.parse(localStorage.getItem('cliniaura_user'))?.token;
 
     fetch(`${API_URL}/api/alarms/burden-report`, {

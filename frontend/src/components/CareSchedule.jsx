@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Pill, Syringe, Clock, CheckCircle, XCircle, RotateCcw, Plus, Trash2 } from 'lucide-react';
 import io from 'socket.io-client';
 
-const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://10.2.195.143:5000';
+const API_URL = import.meta.env.VITE_BACKEND_URL || `${window.location.protocol}//${window.location.hostname}:5000`;
 
 const initialSchedules = [];
 

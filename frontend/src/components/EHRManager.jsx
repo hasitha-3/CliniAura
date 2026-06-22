@@ -33,7 +33,7 @@ const EHRManager = ({ patientId, patientName, patientAge, patientGender }) => {
     if (patientGender) formData.append('gender', patientGender);
     if (patientName) formData.append('name', patientName);
 
-    const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://10.2.195.143:5000';
+    const API_URL = import.meta.env.VITE_BACKEND_URL || `${window.location.protocol}//${window.location.hostname}:5000`;
     const token = JSON.parse(localStorage.getItem('cliniaura_user'))?.token || '';
     const apiKey = localStorage.getItem('medgemma_api_key') || '';
 
@@ -65,7 +65,7 @@ const EHRManager = ({ patientId, patientName, patientAge, patientGender }) => {
   };
 
   const handleDownload = () => {
-    const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://10.2.195.143:5000';
+    const API_URL = import.meta.env.VITE_BACKEND_URL || `${window.location.protocol}//${window.location.hostname}:5000`;
     window.open(`${API_URL}/api/ehr/download/${patientId}`, '_blank');
   };
 

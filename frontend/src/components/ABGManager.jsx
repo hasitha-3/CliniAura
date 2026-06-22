@@ -113,8 +113,7 @@ const ABGManager = ({ patientId, patientName }) => {
   const getAlertColor = (level) => {
     if (!level) return 'var(--teal)';
     const l = level.toLowerCase();
-    if (l === 'critical') return '#ef4444';
-    if (l === 'high') return '#f97316';
+    if (l === 'critical' || l === 'high') return '#ff4d6a';
     if (l === 'normal') return '#22c55e';
     return 'var(--teal)';
   };
