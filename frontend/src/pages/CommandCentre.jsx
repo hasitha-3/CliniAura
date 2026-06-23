@@ -336,18 +336,25 @@ const CommandCentre = () => {
               </span>
             </div>
             <div style={{ maxHeight: '400px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {activeAlerts.map(alert => {
-                const pt = patients.find(p => p._id === alert.patientId || p.patientId === alert.patientId);
-                return (
-                  <div key={alert.id} style={{ background: 'rgba(255, 77, 106, 0.06)', border: '1px solid rgba(255, 77, 106, 0.3)', padding: '12px', borderRadius: '12px', animation: 'fade-up 0.3s ease-out' }}>
-                    <div style={{ fontSize: '0.9rem', fontWeight: 'bold' }}>
-                      {pt?.name || 'Unknown Patient'} <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>({pt?.patientId || alert.patient_id})</span>
+              {activeAlerts.length === 0 ? (
+                <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px 10px', fontSize: '0.9rem', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px dashed var(--border)' }}>
+                  <CheckCircle size={24} style={{ opacity: 0.5, margin: '0 auto 8px', color: 'var(--teal)' }} />
+                  <div>All clear! No active escalations.</div>
+                </div>
+              ) : (
+                activeAlerts.map(alert => {
+                  const pt = patients.find(p => p._id === alert.patientId || p.patientId === alert.patientId);
+                  return (
+                    <div key={alert.id} style={{ background: 'rgba(255, 77, 106, 0.06)', border: '1px solid rgba(255, 77, 106, 0.3)', padding: '12px', borderRadius: '12px', animation: 'fade-up 0.3s ease-out' }}>
+                      <div style={{ fontSize: '0.9rem', fontWeight: 'bold' }}>
+                        {pt?.name || 'Unknown Patient'} <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>({pt?.patientId || alert.patient_id})</span>
+                      </div>
+                      <div style={{ fontSize: '0.8rem', color: '#ff4d6a', fontWeight: '500' }}>{alert.message}</div>
+                      <button onClick={() => acknowledgeWithLog(alert.id, pt, alert.message)} style={{ marginTop: '8px', width: '100%', fontSize: '0.75rem', background: '#ff4d6a', color: 'white', border: 'none', padding: '4px', borderRadius: '4px', cursor: 'pointer' }}>Acknowledge</button>
                     </div>
-                    <div style={{ fontSize: '0.8rem', color: '#ff4d6a', fontWeight: '500' }}>{alert.message}</div>
-                    <button onClick={() => acknowledgeWithLog(alert.id, pt, alert.message)} style={{ marginTop: '8px', width: '100%', fontSize: '0.75rem', background: '#ff4d6a', color: 'white', border: 'none', padding: '4px', borderRadius: '4px', cursor: 'pointer' }}>Acknowledge</button>
-                  </div>
-                );
-              })}
+                  );
+                })
+              )}
             </div>
           </div>
         </div>
@@ -486,7 +493,7 @@ const CommandCentre = () => {
                         <div style={{ textAlign: 'center', borderLeft: '1px solid var(--border)' }}>
                           <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Steps</div>
                           <div style={{ fontSize: '1rem', fontWeight: 'bold', color: 'var(--text)' }}>
-                            {v?.steps || '--'}
+                            {v?.steps !== undefined ? v.steps : '--'}
                           </div>
                         </div>
                         <div style={{ textAlign: 'center', borderLeft: '1px solid var(--border)' }}>

@@ -1,0 +1,17 @@
+[
+  {
+    "id": "1782191368822",
+    "patientId": "1",
+    "patientName": "Arjun Mehta",
+    "timestamp": "2026-06-23T05:09:28.822Z",
+    "status": "Resolved",
+    "notes": [
+      {
+        "role": "NURSE",
+        "author": "testnurse1",
+        "text": "Difficult to breathe.",
+        "timestamp": "2026-06-23T05:10:32.972Z"
+      }
+    ]
+  }
+]

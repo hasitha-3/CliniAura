@@ -349,7 +349,7 @@ const AlertHistory = () => {
                         </div>
                       )
                     ) : (
-                      <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>--</span>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>N/A</span>
                     )}
                   </td>
                 </tr>

@@ -127,36 +127,36 @@ app.post('/api/login', async (req, res) => {
 });
 
 // --- API Routes ---
-// --- NANO API PROXY ENDPOINTS ---
-const NANO_BASE_URL = 'http://100.88.162.102:8000';
+// --- MAC MINI API PROXY ENDPOINTS ---
+const MINI_BASE_URL = 'http://100.88.162.102:8000';
 
-app.get('/api/nano/health', async (req, res) => {
+app.get('/api/mini/health', async (req, res) => {
   try {
-    const nanoRes = await fetch(`${NANO_BASE_URL}/health`);
-    const data = await nanoRes.json();
+    const miniRes = await fetch(`${MINI_BASE_URL}/health`);
+    const data = await miniRes.json();
     res.json(data);
   } catch (error) {
-    res.status(500).json({ status: "offline", error: "Nano proxy failed" });
+    res.status(500).json({ status: "offline", error: "Mac Mini proxy failed" });
   }
 });
 
-app.get('/api/nano/dashboard/live', async (req, res) => {
+app.get('/api/mini/dashboard/live', async (req, res) => {
   try {
-    const nanoRes = await fetch(`${NANO_BASE_URL}/dashboard/live`);
-    const data = await nanoRes.json();
+    const miniRes = await fetch(`${MINI_BASE_URL}/dashboard/live`);
+    const data = await miniRes.json();
     res.json(data);
   } catch (error) {
-    res.status(500).json({ error: "Nano proxy failed" });
+    res.status(500).json({ error: "Mac Mini proxy failed" });
   }
 });
 
-app.get('/api/nano/alerts', async (req, res) => {
+app.get('/api/mini/alerts', async (req, res) => {
   try {
-    const nanoRes = await fetch(`${NANO_BASE_URL}/alerts`);
-    const data = await nanoRes.json();
+    const miniRes = await fetch(`${MINI_BASE_URL}/alerts`);
+    const data = await miniRes.json();
     res.json(data);
   } catch (error) {
-    res.status(500).json({ error: "Nano proxy failed" });
+    res.status(500).json({ error: "Mac Mini proxy failed" });
   }
 });
 // --------------------------------
@@ -268,7 +268,7 @@ const seedClinicalEvents = () => {
       type: 'ABG_ALERT',
       patientId: 'CLA-2026-00001',
       patientName: 'Arjun Mehta',
-      actor: 'MedGemma-Nano',
+      actor: 'MedGemma-Mac Mini',
       actorRole: 'SYSTEM',
       details: {
         alert_level: 'Critical',
@@ -505,7 +505,7 @@ app.post('/api/v1/vitals/snapshot', async (req, res) => {
              'ALERT',
              vitals.patientId,
              patientName,
-             'MedGemma-Nano',
+             'MedGemma-Mac Mini',
              'SYSTEM',
              {
                alert_level: agentResponse.alert_level,
@@ -594,7 +594,7 @@ app.post('/api/ehr/upload', upload.single('file'), async (req, res) => {
       const blob = new Blob([fileBuffer], { type: 'application/pdf' });
       formData.append('file', blob, req.file.originalname);
 
-      // We extract API Key if sent by frontend, otherwise use the Nano MedGemma Admin Key
+      // We extract API Key if sent by frontend, otherwise use the Mac Mini MedGemma Admin Key
       const apiKey = req.headers['x-api-key'] || 'xB3z9Bw2u8qkD5sT_1GvLw0aR6YhN4pOeZcF7mX';
       const token = req.headers.authorization ? req.headers.authorization.split(' ')[1] : 'clinician_token';
 
@@ -708,14 +708,14 @@ app.post('/api/abg/upload', upload.single('file'), async (req, res) => {
       }
     }
 
-    // Proxy PDF to MedGemma-Agent on Nano
+    // Proxy PDF to MedGemma-Agent on Mac Mini
     try {
       const fileData = fs.readFileSync(req.file.path);
       const blob = new Blob([fileData], { type: 'application/pdf' });
       const formData = new FormData();
       formData.append('file', blob, req.file.originalname);
 
-      const agentRes = await fetch(`${NANO_BASE_URL}/api/v1/abg/upload`, {
+      const agentRes = await fetch(`${MINI_BASE_URL}/api/v1/abg/upload`, {
         method: 'POST',
         headers: { 'X-API-Key': 'xB3z9Bw2u8qkD5sT_1GvLw0aR6YhN4pOeZcF7mX' },
         body: formData,
@@ -732,7 +732,7 @@ app.post('/api/abg/upload', upload.single('file'), async (req, res) => {
       }
     } catch (e) {
       console.warn('Failed to contact MedGemma for upload:', e.message);
-      return res.status(502).json({ error: 'MedGemma Nano Offline — cannot parse PDF. Please ensure the Nano is running medgemma_api_v2.py on port 8000.' });
+      return res.status(502).json({ error: 'MedGemma Mac Mini Offline — cannot parse PDF. Please ensure the Mac Mini is running medgemma_api_v2.py on port 8000.' });
     }
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -749,7 +749,7 @@ app.post('/api/abg/analyze', async (req, res) => {
 
     // Try MedGemma-Agent (full agent, has /api/v1/abg/analyze)
     try {
-      const agentRes = await fetch(`${NANO_BASE_URL}/api/v1/abg/analyze`, {
+      const agentRes = await fetch(`${MINI_BASE_URL}/api/v1/abg/analyze`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -771,7 +771,7 @@ app.post('/api/abg/analyze', async (req, res) => {
       // Fallback: Try medgemma_api_v2.py at /api/v1/abg/analyze (our updated route)
       console.log(`[ABG] Falling back to medgemma_api_v2 for ${patientId}: ${e1.message}`);
       try {
-        const v2Res = await fetch(`${NANO_BASE_URL}/api/v1/abg/analyze`, {
+        const v2Res = await fetch(`${MINI_BASE_URL}/api/v1/abg/analyze`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -785,12 +785,12 @@ app.post('/api/abg/analyze', async (req, res) => {
           throw new Error(`v2 error ${v2Res.status}`);
         }
       } catch (e2) {
-        console.warn(`[ABG] Both Nano APIs failed for ${patientId}:`, e2.message);
+        console.warn(`[ABG] Both Mac Mini APIs failed for ${patientId}:`, e2.message);
         analysis = {
-          summary: 'MedGemma Nano is offline — no AI inference available. This is a placeholder result.',
-          clinical_significance: 'N/A — Nano offline',
+          summary: 'MedGemma Mac Mini is offline — no AI inference available. This is a placeholder result.',
+          clinical_significance: 'N/A — Mac Mini offline',
           alert_level: 'Unknown',
-          primary_concern: 'N/A — Nano offline',
+          primary_concern: 'N/A — Mac Mini offline',
           rule_based_only: true
         };
       }
@@ -819,7 +819,7 @@ app.post('/api/abg/analyze', async (req, res) => {
         'ABG_ALERT',
         patientId,
         payload.patient_name || patientId,
-        'MedGemma-Nano',
+        'MedGemma-Mac Mini',
         'SYSTEM',
         {
           alert_level: result.alert_level,

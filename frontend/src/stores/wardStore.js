@@ -25,8 +25,9 @@ const useWardStore = create((set, get) => ({
     // 2. Add to Alert Queue if present
     let newAlerts = [...state.alerts];
     if (alertMsg) {
-      // Check if not already in queue unacknowledged
-      const exists = newAlerts.find(a => a.patientId === patientId && !a.acknowledged);
+      // Check if this exact alert message already exists (whether acknowledged or not)
+      // to prevent it from continuously popping up after acknowledgement
+      const exists = newAlerts.find(a => a.patientId === patientId && a.message === alertMsg);
       if (!exists) {
         newAlerts.push({
           id: Date.now().toString(),

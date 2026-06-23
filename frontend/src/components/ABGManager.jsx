@@ -215,6 +215,9 @@ const ABGManager = ({ patientId, patientName }) => {
             <div><span class="label">HCO3:</span> ${fields.hco3 ?? d.hco3 ?? 'N/A'} mEq/L</div>
             <div><span class="label">Lactate:</span> ${fields.lactate ?? d.lactate ?? 'N/A'} mmol/L</div>
             <div><span class="label">Base Excess:</span> ${fields.base_excess ?? d.base_excess ?? 'N/A'} mmol/L</div>
+            <div><span class="label">FiO2:</span> ${fields.fio2 ?? d.fio2 ?? 'N/A'}</div>
+            <div><span class="label">Na+:</span> ${fields.na ?? d.na ?? 'N/A'} mEq/L</div>
+            <div><span class="label">Cl-:</span> ${fields.cl ?? d.cl ?? 'N/A'} mEq/L</div>
           </div>
           ${d.rule_based_only ? '<p style="color:#92400e; font-size:0.85rem;">⚠ Note: MedGemma inference unavailable — results are rule-based only.</p>' : ''}
           <div class="footer">
@@ -276,6 +279,9 @@ const ABGManager = ({ patientId, patientName }) => {
               ['HCO3', uploadResult.extracted_fields?.hco3, 'mEq/L'],
               ['Lactate', uploadResult.extracted_fields?.lactate, 'mmol/L'],
               ['Base Excess', uploadResult.extracted_fields?.base_excess, 'mmol/L'],
+              ['FiO2', uploadResult.extracted_fields?.fio2],
+              ['Na+', uploadResult.extracted_fields?.na, 'mEq/L'],
+              ['Cl-', uploadResult.extracted_fields?.cl, 'mEq/L'],
             ].map(([label, val, unit]) => (
               <div key={label} style={{ background: 'rgba(255,255,255,0.04)', padding: '6px', borderRadius: '4px' }}>
                 <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>{label}</span><br />
