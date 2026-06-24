@@ -19,3 +19,5 @@ pids
 *.pid
 *.seed
 *.pid.lock
+patient_calls.json
+abg_history.json

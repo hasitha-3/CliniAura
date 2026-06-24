@@ -49,12 +49,12 @@ if [ -n "$TAILSCALE_AUTH_KEY" ]; then
   # IMPORTANT: Do NOT set ALL_PROXY / HTTP_PROXY / HTTPS_PROXY
   # Node.js native fetch (undici) picks those up and tries HTTP CONNECT
   # which is incompatible with Tailscale's SOCKS5 server.
-  # Instead we export a custom var that server.js reads explicitly.
+  # Instead we export a custom var that server.js reads explicitly via node-fetch.
   export EDGE_SOCKS5="socks5://127.0.0.1:1055"
 
   echo "=== Tailscale ready. Custom var EDGE_SOCKS5 set ==="
 else
-  echo "No TAILSCALE_AUTH_KEY — skipping Tailscale."
+  echo "No TAILSCALE_AUTH_KEY - skipping Tailscale."
 fi
 
 echo "=== Starting Node.js server ==="
