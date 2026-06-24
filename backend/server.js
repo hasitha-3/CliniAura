@@ -1,4 +1,11 @@
 require('dotenv').config();
+const { setGlobalDispatcher, ProxyAgent } = require('undici');
+
+if (process.env.HTTP_PROXY) {
+  console.log(`Setting up global proxy for Tailscale userspace networking: ${process.env.HTTP_PROXY}`);
+  const proxyAgent = new ProxyAgent(process.env.HTTP_PROXY);
+  setGlobalDispatcher(proxyAgent);
+}
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
