@@ -5,10 +5,12 @@ services:
     plan: free
     rootDir: backend
     buildCommand: npm install
-    startCommand: node server.js
+    startCommand: bash start.sh
     envVars:
       - key: MONGODB_URI
         value: mongodb+srv://alamandahasitha:9502072613@cluster0.kjzfjen.mongodb.net/cliniaura
+      - key: TAILSCALE_AUTH_KEY
+        value: tskey-auth-kxkXkEkB7a11CNTRL-WzhQqprqdkW2fChgUkSEmWj1WGUffYosW
 
   - type: web
     name: cliniaura-frontend
@@ -22,7 +24,4 @@ services:
         destination: /index.html
     envVars:
       - key: VITE_BACKEND_URL
-        fromService:
-          name: cliniaura-backend
-          type: web
-          envVarKey: RENDER_EXTERNAL_URL
+        value: https://cliniaura-backend.onrender.com

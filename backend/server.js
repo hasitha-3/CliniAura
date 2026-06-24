@@ -1,11 +1,22 @@
-require('dotenv').config();
-const { setGlobalDispatcher, ProxyAgent } = require('undici');
+﻿require('dotenv').config();
 
-if (process.env.HTTP_PROXY) {
-  console.log(`Setting up global proxy for Tailscale userspace networking: ${process.env.HTTP_PROXY}`);
-  const proxyAgent = new ProxyAgent(process.env.HTTP_PROXY);
-  setGlobalDispatcher(proxyAgent);
+// --- Tailscale SOCKS5 Proxy Setup ---
+// When deployed on Render with Tailscale, start.sh sets ALL_PROXY=socks5://127.0.0.1:1055
+// We use socks-proxy-agent so fetch() calls to 100.x.x.x Tailscale IPs are routed correctly.
+let edgeFetchOptions = {};
+const socksProxy = process.env.ALL_PROXY || process.env.HTTPS_PROXY;
+if (socksProxy && socksProxy.startsWith('socks')) {
+  const { SocksProxyAgent } = require('socks-proxy-agent');
+  const agent = new SocksProxyAgent(socksProxy);
+  edgeFetchOptions = { agent };
+  console.log(`[Tailscale] SOCKS5 proxy active: ${socksProxy}`);
 }
+
+// Wrapper: use proxy agent only for Edge Node requests (100.x.x.x Tailscale IPs)
+const edgeFetch = (url, options = {}) => {
+  return fetch(url, { ...options, ...edgeFetchOptions });
+};
+
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
@@ -142,7 +153,7 @@ const MINI_BASE_URL = 'http://100.88.162.102:8000';
 
 app.get('/api/mini/health', async (req, res) => {
   try {
-    const miniRes = await fetch(`${MINI_BASE_URL}/health`);
+    const miniRes = await edgeFetch(`${MINI_BASE_URL}/health`);
     const data = await miniRes.json();
     res.json(data);
   } catch (error) {
@@ -152,7 +163,7 @@ app.get('/api/mini/health', async (req, res) => {
 
 app.get('/api/mini/dashboard/live', async (req, res) => {
   try {
-    const miniRes = await fetch(`${MINI_BASE_URL}/dashboard/live`);
+    const miniRes = await edgeFetch(`${MINI_BASE_URL}/dashboard/live`);
     const data = await miniRes.json();
     res.json(data);
   } catch (error) {
@@ -162,7 +173,7 @@ app.get('/api/mini/dashboard/live', async (req, res) => {
 
 app.get('/api/mini/alerts', async (req, res) => {
   try {
-    const miniRes = await fetch(`${MINI_BASE_URL}/alerts`);
+    const miniRes = await edgeFetch(`${MINI_BASE_URL}/alerts`);
     const data = await miniRes.json();
     res.json(data);
   } catch (error) {
@@ -474,7 +485,7 @@ app.post('/api/v1/vitals/snapshot', async (req, res) => {
 
     // Call Health AI at the Edge Agent
     try {
-      const gemmaRes = await fetch(`${MINI_BASE_URL}/api/v1/vitals/snapshot`, {
+      const gemmaRes = await edgeFetch(`${MINI_BASE_URL}/api/v1/vitals/snapshot`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-API-Key': process.env.API_KEYS_ADMIN || 'xB3z9Bw2u8qkD5sT_1GvLw0aR6YhN4pOeZcF7mX', 'Authorization': 'Bearer clinician_token' },
         body: JSON.stringify(data)
@@ -627,7 +638,7 @@ app.post('/api/ehr/upload', upload.single('file'), async (req, res) => {
       const apiKey = req.headers['x-api-key'] || process.env.API_KEYS_ADMIN || 'xB3z9Bw2u8qkD5sT_1GvLw0aR6YhN4pOeZcF7mX';
       const token = req.headers.authorization ? req.headers.authorization.split(' ')[1] : 'clinician_token';
 
-      const agentRes = await fetch(`${MINI_BASE_URL}/api/v1/ehr/ingest`, {
+      const agentRes = await edgeFetch(`${MINI_BASE_URL}/api/v1/ehr/ingest`, {
         method: 'POST',
         headers: {
           'X-API-Key': apiKey,
@@ -743,7 +754,7 @@ app.post('/api/abg/upload', upload.single('file'), async (req, res) => {
       const formData = new FormData();
       formData.append('file', blob, req.file.originalname);
 
-      const agentRes = await fetch(`${MINI_BASE_URL}/api/v1/abg/upload`, {
+      const agentRes = await edgeFetch(`${MINI_BASE_URL}/api/v1/abg/upload`, {
         method: 'POST',
         headers: { 'X-API-Key': process.env.API_KEYS_ADMIN || 'xB3z9Bw2u8qkD5sT_1GvLw0aR6YhN4pOeZcF7mX' },
         body: formData,
@@ -760,7 +771,7 @@ app.post('/api/abg/upload', upload.single('file'), async (req, res) => {
       }
     } catch (e) {
       console.warn('Failed to contact Health AI at the Edge for upload:', e.message);
-      return res.status(502).json({ error: 'Health AI at the Edge Node Offline — cannot parse PDF. Please ensure the Edge Node is running.' });
+      return res.status(502).json({ error: 'Health AI at the Edge Node Offline â€” cannot parse PDF. Please ensure the Edge Node is running.' });
     }
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -777,7 +788,7 @@ app.post('/api/abg/analyze', async (req, res) => {
 
     // Try Health AI at the Edge-Agent (full agent, has /api/v1/abg/analyze)
     try {
-      const agentRes = await fetch(`${MINI_BASE_URL}/api/v1/abg/analyze`, {
+      const agentRes = await edgeFetch(`${MINI_BASE_URL}/api/v1/abg/analyze`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -799,7 +810,7 @@ app.post('/api/abg/analyze', async (req, res) => {
       // Fallback: Try health_ai_api_v2.py at /api/v1/abg/analyze (our updated route)
       console.log(`[ABG] Falling back to health_ai_api_v2 for ${patientId}: ${e1.message}`);
       try {
-        const v2Res = await fetch(`${MINI_BASE_URL}/api/v1/abg/analyze`, {
+        const v2Res = await edgeFetch(`${MINI_BASE_URL}/api/v1/abg/analyze`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -815,10 +826,10 @@ app.post('/api/abg/analyze', async (req, res) => {
       } catch (e2) {
         console.warn(`[ABG] Both Edge Node APIs failed for ${patientId}:`, e2.message);
         analysis = {
-          summary: 'Health AI at the Edge Edge Node is offline — no AI inference available. This is a placeholder result.',
-          clinical_significance: 'N/A — Edge Node offline',
+          summary: 'Health AI at the Edge Edge Node is offline â€” no AI inference available. This is a placeholder result.',
+          clinical_significance: 'N/A â€” Edge Node offline',
           alert_level: 'Unknown',
-          primary_concern: 'N/A — Edge Node offline',
+          primary_concern: 'N/A â€” Edge Node offline',
           rule_based_only: true
         };
       }
@@ -1020,22 +1031,28 @@ io.on('connection', (socket) => {
 // Fetch Prorithm live vitals directly from the edge node and broadcast via websocket
 setInterval(async () => {
   try {
-    const res = await fetch(`${MINI_BASE_URL}/dashboard/live`);
+    const res = await edgeFetch(`${MINI_BASE_URL}/dashboard/live`);
     if (res.ok) {
       const liveData = await res.json();
+      
+      // Deduplicate records to avoid dashboard glitching (take the latest record per patient)
+      const latestDataPerPatient = new Map();
       liveData.forEach(pData => {
-        // Skip mock data IDs just in case they leak into the Mac Mini
         if (String(pData.patient_id) === '1' || String(pData.patient_id) === '2') return;
-
-        // Skip stale records (older than 60 seconds) to prevent dashboard glitching
-        if (pData.snapshot_timestamp) {
-          const recordTime = new Date(pData.snapshot_timestamp).getTime();
-          const ageMs = Math.abs(Date.now() - recordTime);
-          if (ageMs > 60000) {
-            return;
+        
+        const currentLatest = latestDataPerPatient.get(pData.patient_id);
+        if (!currentLatest) {
+          latestDataPerPatient.set(pData.patient_id, pData);
+        } else if (pData.snapshot_timestamp && currentLatest.snapshot_timestamp) {
+          if (new Date(pData.snapshot_timestamp).getTime() > new Date(currentLatest.snapshot_timestamp).getTime()) {
+            latestDataPerPatient.set(pData.patient_id, pData);
           }
+        } else {
+          latestDataPerPatient.set(pData.patient_id, pData);
         }
+      });
 
+      latestDataPerPatient.forEach(pData => {
         let ecgData = pData.ecg || [];
         if (ecgData.length === 0) {
            const hr = pData.heart_rate || 72;
@@ -1097,7 +1114,7 @@ setInterval(async () => {
       });
     }
   } catch (e) {
-    // Silently ignore connection errors to edge device
+    console.error("Error connecting to edge device:", e.message);
   }
 }, 2000);
 

@@ -21,6 +21,8 @@
     "pdf-lib": "^1.17.1",
     "pdfkit": "^0.19.1",
     "socket.io": "^4.8.3",
+    "socket.io-client": "^4.8.3",
+    "socks-proxy-agent": "^10.1.0",
     "undici": "^8.5.0"
   }
 }

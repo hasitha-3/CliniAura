@@ -1,30 +1,55 @@
 #!/usr/bin/env bash
+set -e
 
 # This script sets up Tailscale in userspace networking mode for Render deployments
 # and then starts the Node.js server.
 
 if [ -n "$TAILSCALE_AUTH_KEY" ]; then
+  echo "=== Setting up Tailscale for Render ==="
+  
+  # Download latest stable Tailscale
+  TSFILE="tailscale_1.80.3_amd64.tgz"
   echo "Downloading Tailscale..."
-  # Download static binaries for Tailscale
-  wget https://pkgs.tailscale.com/stable/tailscale_1.66.4_amd64.tgz
-  tar xzf tailscale_1.66.4_amd64.tgz
-  
-  echo "Starting tailscaled in userspace mode..."
-  # Run tailscaled with userspace networking and expose an HTTP/SOCKS5 proxy on port 1055
-  ./tailscale_1.66.4_amd64/tailscaled --tun=userspace-networking --socks5-server=localhost:1055 --outbound-http-proxy-listen=localhost:1055 &
-  
-  # Wait for the daemon to start
+  wget -q "https://pkgs.tailscale.com/stable/${TSFILE}"
+  tar xzf "${TSFILE}"
+  TSDIR="tailscale_1.80.3_amd64"
+
+  echo "Starting tailscaled in userspace mode with SOCKS5 proxy on port 1055..."
+  # SOCKS5 server on port 1055 for outbound connections to Tailscale IPs
+  ./${TSDIR}/tailscaled \
+    --tun=userspace-networking \
+    --socks5-server=localhost:1055 \
+    --state=mem: \
+    &
+  TAILSCALED_PID=$!
+  echo "tailscaled started (PID: $TAILSCALED_PID)"
+
+  # Wait for the daemon socket to be ready
   sleep 5
-  
+
   echo "Authenticating Tailscale..."
-  ./tailscale_1.66.4_amd64/tailscale up --authkey=${TAILSCALE_AUTH_KEY} --hostname=cliniaura-render-backend --accept-routes
+  ./${TSDIR}/tailscale up \
+    --authkey="${TAILSCALE_AUTH_KEY}" \
+    --hostname=cliniaura-render-backend \
+    --accept-routes \
+    --accept-dns=false
+
+  echo "Tailscale status:"
+  ./${TSDIR}/tailscale status || true
+
+  # Export SOCKS5 proxy for Node.js (used by ALL_PROXY)
+  export ALL_PROXY="socks5://127.0.0.1:1055"
+  # Also set for undici / node-fetch
+  export HTTPS_PROXY="socks5://127.0.0.1:1055"
+  export HTTP_PROXY="socks5://127.0.0.1:1055"
   
-  # Set the HTTP_PROXY environment variable so Node.js can route requests through Tailscale
-  export HTTP_PROXY="http://127.0.0.1:1055"
-  echo "Tailscale setup complete. Proxy running on $HTTP_PROXY."
+  # Only proxy Tailscale IPs (100.x.x.x range) — don't proxy public internet
+  export NO_PROXY="localhost,127.0.0.1,render.com,onrender.com,mongodb.net"
+
+  echo "=== Tailscale setup complete. SOCKS5 proxy on 127.0.0.1:1055 ==="
 else
-  echo "No TAILSCALE_AUTH_KEY found in environment. Skipping Tailscale setup."
+  echo "No TAILSCALE_AUTH_KEY found. Skipping Tailscale setup."
 fi
 
-echo "Starting Node.js server..."
-node server.js
+echo "=== Starting Node.js server... ==="
+exec node server.js

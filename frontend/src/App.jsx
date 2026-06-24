@@ -1013,10 +1013,18 @@ const DoctorDashboard = () => {
       headers: { 'Authorization': `Bearer ${token}` }
     })
       .then(res => res.json())
-      .then(data => setPatients(Array.isArray(data) ? data : []))
+      .then(data => {
+        const pts = Array.isArray(data) ? data : [];
+        setPatients(pts);
+        if (pts.length > 0 && !selectedPatientRef.current) {
+          setSelectedPatient(pts.find(p => p.username === 'testpatient3' || p.username === 'patient3') || pts[0]);
+        }
+      })
       .catch(() => {
         console.warn("Using dummy data for DoctorDashboard");
-        setPatients(generateDummyPatients());
+        const dummy = generateDummyPatients();
+        setPatients(dummy);
+        if (!selectedPatientRef.current) setSelectedPatient(dummy[0]);
       });
 
     const role = JSON.parse(localStorage.getItem('cliniaura_user'))?.role;
