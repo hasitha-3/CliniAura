@@ -4,7 +4,7 @@ const API_HOST = '127.0.0.1';
 const API_PORT = 5000;
 const API_PATH = '/api/v1/vitals/snapshot';
 
-// Define realistic patient profiles based on the MedGemma Agent test cases
+// Define realistic patient profiles based on the health_ai Agent test cases
 const profiles = {
   // Stable post-operative recovery (Patient 1)
   stable: {

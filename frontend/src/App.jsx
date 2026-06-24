@@ -1,9 +1,9 @@
-import React, { useState, useEffect, createContext, useContext } from 'react';
+import React, { useState, useEffect, useRef, createContext, useContext } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import io from 'socket.io-client';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Activity, Heart, Wind, Droplet, AlertTriangle, LogOut, Shield, ShieldAlert, Stethoscope, User as UserIcon, ChevronDown, ChevronRight, CheckCircle, Info, Settings, FileText, Thermometer, Footprints, Accessibility, Bell } from 'lucide-react';
-import { generateDummyPatients, generateDummyVitals, generateMedGemmaAlert } from './utils/dummyDataSimulator';
+import { generateDummyPatients, generateDummyVitals, generateCliniAuraAlert } from './utils/dummyDataSimulator';
 import './index.css';
 
 import CommandCentre from './pages/CommandCentre';
@@ -11,7 +11,6 @@ import AuditDashboard from './pages/AuditDashboard';
 import AlarmSettings from './pages/AlarmSettings';
 import AlertHistory from './pages/AlertHistory';
 import HomePage from './pages/HomePage';
-import EHRManager from './components/EHRManager';
 import CareSchedule from './components/CareSchedule';
 import useWardStore from './stores/wardStore';
 import PatientCalls from './components/PatientCalls';
@@ -205,8 +204,8 @@ const SettingsPage = () => {
   const [pwdSuccess, setPwdSuccess] = useState('');
   const [showPwdSection, setShowPwdSection] = useState(false);
 
-  // MedGemma Integrations
-  const [apiKey, setApiKey] = useState(localStorage.getItem('medgemma_api_key') || '');
+  // Health AI at the Edge Integrations
+  const [apiKey, setApiKey] = useState(localStorage.getItem('health_ai_api_key') || '');
   const [health, setHealth] = useState(null);
 
   useEffect(() => {
@@ -239,7 +238,7 @@ const SettingsPage = () => {
     }
   }, [user]);
 
-  // Fetch MedGemma Health Status
+  // Fetch Health AI at the Edge Health Status
   useEffect(() => {
     if (user?.role === 'DOCTOR' || user?.role === 'ADMIN') {
       fetch('http://100.88.162.102:8000/health')
@@ -250,8 +249,8 @@ const SettingsPage = () => {
   }, [user]);
 
   const saveApiKey = () => {
-    localStorage.setItem('medgemma_api_key', apiKey);
-    alert('MedGemma API Key Saved Locally!');
+    localStorage.setItem('health_ai_api_key', apiKey);
+    alert('Health AI at the Edge API Key Saved Locally!');
   };
 
   const handleSave = async (e) => {
@@ -326,20 +325,7 @@ const SettingsPage = () => {
             <input className="input-field" type="text" value={user?.role || ''} disabled />
           </div>
           
-          {user?.role === 'PATIENT' && (
-            <div style={{ padding: '16px', background: 'rgba(0, 212, 170, 0.05)', borderRadius: '8px', marginTop: '20px', border: '1px solid var(--border)' }}>
-              <h4 style={{ margin: '0 0 8px 0' }}>Need Help?</h4>
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '12px' }}>Your medical settings are managed by your assigned nurse. If you have any concerns or need assistance, please reach out to them directly.</p>
-              <button 
-                type="button"
-                className="btn" 
-                style={{ background: 'var(--teal)', color: 'white', fontSize: '0.85rem', padding: '6px 12px' }}
-                onClick={() => alert("Your assigned nurse has been notified. They will contact you shortly.")}
-              >
-                Contact Assigned Nurse
-              </button>
-            </div>
-          )}
+
         </form>
 
         <div style={{ borderTop: '1px solid var(--border)', marginTop: '30px', paddingTop: '20px' }}>
@@ -428,7 +414,7 @@ const SettingsPage = () => {
 
         {['DOCTOR', 'ADMIN', 'NURSE'].includes(user?.role) && (
           <div style={{ borderTop: '1px solid var(--border)', marginTop: '30px', paddingTop: '20px' }}>
-            <h3 style={{ fontSize: '1.1rem', marginBottom: '16px' }}>MedGemma AI Integration</h3>
+            <h3 style={{ fontSize: '1.1rem', marginBottom: '16px' }}>Health AI at the Edge AI Integration</h3>
             <div className="glass-panel" style={{ background: 'rgba(0, 212, 170, 0.05)', borderColor: 'var(--teal)' }}>
               
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
@@ -446,7 +432,7 @@ const SettingsPage = () => {
               )}
 
               <div className="input-group">
-                <label className="input-label">MedGemma API Key</label>
+                <label className="input-label">Health AI at the Edge API Key</label>
                 <input 
                   className="input-field" 
                   type="password" 
@@ -597,8 +583,7 @@ const AuthPage = () => {
                 <label className="input-label">Initial Risk Score (HPI)</label>
                 <select className="input-field" value={riskScore} onChange={e => setRiskScore(e.target.value)}>
                   <option value="Low">Low Risk</option>
-                  <option value="Moderate">Moderate Risk</option>
-                  <option value="High">High Risk</option>
+                  <option value="Medium">Medium Risk</option>
                   <option value="Critical">Critical State</option>
                 </select>
               </div>
@@ -694,7 +679,8 @@ const AdminDashboard = () => {
     const matchesRole = selectedRole === 'ALL' || u.role === selectedRole;
     const matchesWard = selectedWard === 'ALL' || u.ward === selectedWard;
     const matchesRisk = selectedRisk === 'ALL' || u.riskScore === selectedRisk;
-    return matchesSearch && matchesRole && matchesWard && matchesRisk;
+    const isTestPatient = u._id === '1' || u._id === '2';
+    return matchesSearch && matchesRole && matchesWard && matchesRisk && !isTestPatient;
   }).sort((a, b) => {
     if (a.role === 'PATIENT' && b.role === 'PATIENT' && a.admissionDate && b.admissionDate) {
       return sortOrder === 'DESC' ? new Date(b.admissionDate) - new Date(a.admissionDate) : new Date(a.admissionDate) - new Date(b.admissionDate);
@@ -733,9 +719,7 @@ const AdminDashboard = () => {
           >
             <option value="ALL">All Risks</option>
             <option value="Critical">Critical</option>
-            <option value="High">High</option>
             <option value="Medium">Medium</option>
-            <option value="Moderate">Moderate</option>
             <option value="Low">Low</option>
           </select>
           <select
@@ -889,30 +873,7 @@ const AdminDashboard = () => {
                     </div>
                   </div>
                   
-                  {/* Real-time Vitals & Alerts Block */}
-                  {(() => {
-                    const v = adminVitals[u._id] || {};
-                    return (
-                      <div className="grid grid-cols-4 mb-4" style={{ gap: '16px' }}>
-                        <div className="metric-box" style={{ background: 'rgba(0, 212, 170, 0.05)', border: '1px solid var(--teal)' }}>
-                          <div style={{fontSize: '0.8rem', color: 'var(--teal)', textTransform: 'uppercase'}}>Heart Rate</div>
-                          <div className="metric-val" style={{fontSize: '1.5rem', color: 'var(--text)'}}>{v.heartRate || '--'} <span style={{fontSize:'0.9rem', color:'var(--text-dim)'}}>bpm</span></div>
-                        </div>
-                        <div className="metric-box" style={{ background: 'rgba(0, 212, 170, 0.05)', border: '1px solid var(--teal)' }}>
-                          <div style={{fontSize: '0.8rem', color: 'var(--teal)', textTransform: 'uppercase'}}>SpO2</div>
-                          <div className="metric-val" style={{fontSize: '1.5rem', color: 'var(--text)'}}>{v.spO2 || '--'} <span style={{fontSize:'0.9rem', color:'var(--text-dim)'}}>%</span></div>
-                        </div>
-                        <div className="metric-box" style={{ background: 'rgba(0, 212, 170, 0.05)', border: '1px solid var(--teal)' }}>
-                          <div style={{fontSize: '0.8rem', color: 'var(--teal)', textTransform: 'uppercase'}}>Blood Pressure</div>
-                          <div className="metric-val" style={{fontSize: '1.5rem', color: 'var(--text)'}}>{v.bloodPressureSys || '--'}/{v.bloodPressureDia || '--'}</div>
-                        </div>
-                        <div className="metric-box" style={{ background: 'rgba(0, 212, 170, 0.05)', border: '1px solid var(--teal)' }}>
-                          <div style={{fontSize: '0.8rem', color: 'var(--teal)', textTransform: 'uppercase'}}>Respiration</div>
-                          <div className="metric-val" style={{fontSize: '1.5rem', color: 'var(--text)'}}>{v.respirationRate || '--'} <span style={{fontSize:'0.9rem', color:'var(--text-dim)'}}>rpm</span></div>
-                        </div>
-                      </div>
-                    );
-                  })()}
+                  {/* Real-time Vitals & Alerts Block REMOVED AS REQUESTED */}
 
                   <div className="grid grid-cols-4 mb-4" style={{ gap: '16px' }}>
                     <div className="metric-box" style={{ gridColumn: 'span 4', display: 'flex', flexWrap: 'wrap', gap: '24px', padding: '20px', background: 'rgba(15, 23, 42, 0.5)' }}>
@@ -1030,6 +991,7 @@ const DoctorDashboard = () => {
   const [expandedPatientId, setExpandedPatientId] = useState(null);
   const [socket, setSocket] = useState(null);
   const [vitalsData, setVitalsData] = useState([]);
+  const [ecgData, setEcgData] = useState([]);
   const [alert, setAlert] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   
@@ -1037,6 +999,11 @@ const DoctorDashboard = () => {
   const [selectedWard, setSelectedWard] = useState('ALL');
   const [selectedRisk, setSelectedRisk] = useState('ALL');
   const [sortOrder, setSortOrder] = useState('DESC');
+
+  const selectedPatientRef = useRef(selectedPatient);
+  useEffect(() => {
+    selectedPatientRef.current = selectedPatient;
+  }, [selectedPatient]);
 
   useEffect(() => {
     const API_URL = import.meta.env.VITE_BACKEND_URL || `${window.location.protocol}//${window.location.hostname}:5000`;
@@ -1056,77 +1023,63 @@ const DoctorDashboard = () => {
     setSocket(newSocket);
 
     newSocket.on('vitals_update', (data) => {
-      setVitalsData(prev => {
-        // only keep vitals if they match the selected patient.
-        // wait, we don't have access to selectedPatient here directly unless we use a ref or depend on it.
-        // It's better to handle the filtering inside the effect that depends on selectedPatient.
-        return prev;
-      });
+      const currentSel = selectedPatientRef.current;
+      if (!currentSel) return;
+
+      const incomingId = String(data.vitals.patientId);
+      const ptId = String(currentSel._id || '');
+      const ptUser = String(currentSel.username || '');
+      
+      const EDGE_ID_MAP = {
+        '428': ['patient3', 'testpatient3', '3'],
+        '1736': ['patient3', 'testpatient3', '3'],
+        '1049': ['patient3', 'testpatient3', '3'],
+        '1051': ['patient4', 'testpatient4', '4'],
+      };
+
+      let directMatch = incomingId === ptId || incomingId === ptUser;
+      let mappedMatch = (EDGE_ID_MAP[incomingId] || []).some(mapped => ptUser === mapped || ptId === mapped);
+      
+      if (directMatch || mappedMatch) {
+        setVitalsData(prev => [...prev, data.vitals].slice(-20));
+        if (data.alert) setAlert(data.alert);
+        if (data.vitals.assessment) {
+          setSelectedPatient(prev => {
+            if (prev && prev._id === currentSel._id) {
+              return { ...prev, miniAssessment: data.vitals.assessment };
+            }
+            return prev;
+          });
+        }
+        
+        // Populate ECG data
+        if (data.vitals.ecg && data.vitals.ecg.length > 0) {
+          setEcgData(prev => {
+            const len = data.vitals.ecg.length;
+            const interval = 2000 / len;
+            const newData = data.vitals.ecg.map((val, idx) => ({ 
+                time: Date.now() - 2000 + (idx * interval), 
+                value: val 
+            }));
+            return [...prev, ...newData].slice(-500);
+          });
+        }
+      }
     });
 
-    return () => newSocket.close();
+    return () => {
+      newSocket.close();
+    };
   }, []);
 
   useEffect(() => {
-    const handleVitals = (data) => {
-      if (data.vitals.patientId === selectedPatient._id) {
-        setVitalsData(prev => [...prev, data.vitals].slice(-20));
-        if (data.alert) setAlert(data.alert);
-      }
-    };
-    
-    if (selectedPatient) {
+    if (selectedPatient && socket) {
+      socket.emit('start_monitoring', selectedPatient._id);
       setVitalsData([]);
+      setEcgData([]);
       setAlert(null);
-      if (socket) {
-        socket.emit('start_monitoring', selectedPatient._id);
-        socket.on('vitals_update', handleVitals);
-      }
-      
-      // Continuously poll the Mac Mini Edge API for live telemetry
-      if (window.doctorDemoInterval) clearInterval(window.doctorDemoInterval);
-      const miniInterval = setInterval(async () => {
-        try {
-          const miniRes = await fetch('http://100.88.162.102:8000/dashboard/live');
-          if (miniRes.ok) {
-            const liveData = await miniRes.json();
-            const myData = liveData.find(d => d.patient_id === selectedPatient._id || d.patient_id === selectedPatient.username);
-            
-            if (myData) {
-              const vitals = {
-                respirationRate: myData.respiration_rate || 16,
-                heartRate: myData.heart_rate,
-                bloodPressureSys: myData.systolic_bp,
-                bloodPressureDia: myData.diastolic_bp,
-                spO2: myData.spo2,
-                temperature: 36.8,
-                posture: 'Supine',
-                steps: 0,
-                fallDetected: false,
-                ecgAnomaly: false,
-                timestamp: new Date()
-              };
-              
-              setVitalsData(prev => [...prev, vitals].slice(-20));
-              
-              if (myData.alerts && myData.alerts.length > 0) {
-                setAlert(myData.alerts[0].reason);
-              } else {
-                setAlert(null);
-              }
-            }
-          }
-        } catch (e) {
-          // Silently ignore connection errors
-        }
-      }, 2000);
-      window.doctorDemoInterval = miniInterval;
     }
-    return () => {
-       if (socket) socket.off('vitals_update', handleVitals);
-       if (window.doctorDemoInterval) clearInterval(window.doctorDemoInterval);
-    };
-  }, [selectedPatient, socket]);
+  }, [selectedPatient?._id, socket]);
 
   const latestVitals = vitalsData[vitalsData.length - 1];
   
@@ -1142,14 +1095,15 @@ const DoctorDashboard = () => {
   const filteredPatients = (Array.isArray(patients) ? patients : []).filter(p => {
     const matchesSearch = !searchTerm || p.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
            (p.activeProtocol && p.activeProtocol.toLowerCase().includes(searchTerm.toLowerCase()));
-    const isMyPatientsView = showMyPatientsOnly || user?.role === 'NURSE';
+    const isMyPatientsView = showMyPatientsOnly;
     const matchesMyPatients = !isMyPatientsView || p.assignedNurse === user?.username || p.assignedDoctor === user?.username;
     const matchesWard = selectedWard === 'ALL' || p.ward === selectedWard;
     const matchesRisk = selectedRisk === 'ALL' || p.riskScore === selectedRisk;
     
     console.log("Patient filter check:", p.username, { isMyPatientsView, matchesMyPatients, matchesWard, matchesRisk, assignedDoctor: p.assignedDoctor, username: user?.username });
+    const isTestPatient = p._id === '1' || p._id === '2';
 
-    return matchesSearch && matchesMyPatients && matchesWard && matchesRisk;
+    return matchesSearch && matchesMyPatients && matchesWard && matchesRisk && !isTestPatient;
   }).sort((a, b) => {
     if (a.admissionDate && b.admissionDate) {
       return sortOrder === 'DESC' ? new Date(b.admissionDate) - new Date(a.admissionDate) : new Date(a.admissionDate) - new Date(b.admissionDate);
@@ -1195,7 +1149,6 @@ const DoctorDashboard = () => {
             >
               <option value="ALL">All Risks</option>
               <option value="Critical">Critical</option>
-              <option value="High">High</option>
               <option value="Medium">Medium</option>
               <option value="Low">Low</option>
             </select>
@@ -1207,7 +1160,7 @@ const DoctorDashboard = () => {
               <option value="DESC">Newest First</option>
               <option value="ASC">Oldest First</option>
             </select>
-            {user?.role === 'DOCTOR' && (
+            {(user?.role === 'DOCTOR' || user?.role === 'NURSE') && (
               <button
                 onClick={() => setShowMyPatientsOnly(!showMyPatientsOnly)}
                 style={{
@@ -1281,27 +1234,114 @@ const DoctorDashboard = () => {
               {latestVitals ? (
                 <>
                   <div className="grid grid-cols-4 mb-4" style={{ gap: '12px' }}>
+                    {/* Heart Rate */}
                     <div className="glass-panel vital-card" style={{ padding: '12px' }}>
-                      <div className="vital-value" style={{ color: latestVitals.heartRate > 100 ? '#ff4d6a' : 'white', margin: '2px 0', fontSize: '2rem' }}>{latestVitals.heartRate}</div>
+                      <div className="vital-value" style={{ color: latestVitals?.heartRate > 100 ? '#ff4d6a' : 'white', margin: '2px 0', fontSize: '2rem', fontWeight: 'bold' }}>
+                        {latestVitals?.heartRate || '--'}
+                      </div>
                       <div style={{ color: '#94a3b8', fontSize: '0.75rem', textAlign: 'center' }}>Heart Rate (bpm)</div>
                     </div>
+                    {/* NIBP */}
                     <div className="glass-panel vital-card" style={{ padding: '12px' }}>
-                      <div className="vital-value" style={{ margin: '2px 0', fontSize: '2rem' }}>{latestVitals.bloodPressureSys}/{latestVitals.bloodPressureDia}</div>
+                      <div className="vital-value" style={{ margin: '2px 0', fontSize: '2rem', fontWeight: 'bold' }}>
+                        {latestVitals ? `${latestVitals.bloodPressureSys}/${latestVitals.bloodPressureDia}` : '--/--'}
+                      </div>
                       <div style={{ color: '#94a3b8', fontSize: '0.75rem', textAlign: 'center' }}>NIBP (mmHg)</div>
                     </div>
+                    {/* MAP */}
                     <div className="glass-panel vital-card" style={{ padding: '12px', borderColor: mapData[mapData.length-1]?.MAP < selectedPatient.targetMAP ? '#ff4d6a' : 'var(--border)' }}>
-                      <div className="vital-value" style={{ color: mapData[mapData.length-1]?.MAP < selectedPatient.targetMAP ? '#ff4d6a' : '#38bdf8', margin: '2px 0', fontSize: '2rem' }}>
-                        {mapData[mapData.length-1]?.MAP}
+                      <div className="vital-value" style={{ color: mapData[mapData.length-1]?.MAP < selectedPatient.targetMAP ? '#ff4d6a' : '#38bdf8', margin: '2px 0', fontSize: '2rem', fontWeight: 'bold' }}>
+                        {mapData[mapData.length-1]?.MAP || '--'}
                       </div>
                       <div style={{ color: '#94a3b8', fontSize: '0.75rem', textAlign: 'center' }}>MAP (mmHg)</div>
                     </div>
-                    <div className="glass-panel vital-card" style={{ padding: '12px', background: 'rgba(0, 212, 170, 0.05)', borderColor: 'var(--teal)' }}>
-                      <div className="vital-value truncate" style={{ color: 'var(--teal)', margin: '2px 0', fontSize: '1.1rem', maxWidth: '100%' }} title={selectedPatient.activeProtocol}>
+                    {/* Respiration */}
+                    <div className="glass-panel vital-card" style={{ padding: '12px' }}>
+                      <div className="vital-value" style={{ margin: '2px 0', fontSize: '2rem', fontWeight: 'bold', color: (latestVitals?.respirationRate < 12 || latestVitals?.respirationRate > 20) ? '#ff4d6a' : '#6ee7b7' }}>
+                        {latestVitals?.respirationRate || '--'}
+                      </div>
+                      <div style={{ color: '#94a3b8', fontSize: '0.75rem', textAlign: 'center' }}>Respiration (BrPM)</div>
+                    </div>
+                    {/* SpO2 */}
+                    <div className="glass-panel vital-card" style={{ padding: '12px' }}>
+                      <div className="vital-value" style={{ margin: '2px 0', fontSize: '2rem', fontWeight: 'bold', color: latestVitals?.spO2 < 94 ? '#ff4d6a' : 'var(--teal)' }}>
+                        {latestVitals?.spO2 || '--'}
+                      </div>
+                      <div style={{ color: '#94a3b8', fontSize: '0.75rem', textAlign: 'center' }}>SpO2 Sat (%)</div>
+                    </div>
+                    {/* Temperature */}
+                    <div className="glass-panel vital-card" style={{ padding: '12px' }}>
+                      <div className="vital-value" style={{ margin: '2px 0', fontSize: '2rem', fontWeight: 'bold', color: 'white' }}>
+                        {latestVitals?.temperature || '--'}
+                      </div>
+                      <div style={{ color: '#94a3b8', fontSize: '0.75rem', textAlign: 'center' }}>Temperature (°F)</div>
+                    </div>
+                    {/* Currently Auditing */}
+                    <div className="glass-panel vital-card" style={{ padding: '12px', background: 'rgba(0, 212, 170, 0.05)', borderColor: 'var(--teal)', gridColumn: 'span 2' }}>
+                      <div className="vital-value truncate" style={{ color: 'var(--teal)', margin: '2px 0', fontSize: '1.2rem', maxWidth: '100%', fontWeight: 'bold' }} title={selectedPatient.activeProtocol}>
                         {selectedPatient.activeProtocol || 'None'}
                       </div>
                       <div style={{ color: '#94a3b8', fontSize: '0.75rem', textAlign: 'center' }}>Currently Auditing</div>
                     </div>
                   </div>
+
+                  {/* ECG Graph Panel */}
+                  <div className="glass-panel vital-card" style={{ padding: '20px', background: 'rgba(14, 165, 233, 0.15)', borderColor: 'rgba(56, 189, 248, 0.3)', marginBottom: '16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#bae6fd', fontSize: '0.8rem', textTransform: 'uppercase', marginBottom: '15px' }}>
+                      <Activity size={18} color="#38bdf8" /> Live ECG Waveform (10s Continuous Window)
+                    </div>
+                    <div style={{ height: '120px', width: '100%', position: 'relative', overflow: 'hidden' }}>
+                      {ecgData.length > 0 ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={ecgData.slice(-500)}>
+                            <Tooltip contentStyle={{ backgroundColor: 'rgba(15, 23, 42, 0.9)', border: 'none', color: '#fff' }} />
+                            <Line 
+                              type="monotone" 
+                              dataKey="value" 
+                              stroke="#38bdf8" 
+                              strokeWidth={2} 
+                              dot={false} 
+                              isAnimationActive={false} 
+                            />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <svg viewBox="0 0 500 100" style={{ width: '100%', height: '100%', stroke: '#38bdf8', fill: 'none', strokeWidth: 2 }}>
+                          <path className="ecg-line-animate" d="M0,50 L50,50 L60,30 L70,70 L80,50 L100,50 L110,40 L120,60 L130,50 L180,50 L190,10 L210,90 L220,50 L250,50 L260,30 L270,70 L280,50 L300,50 L310,40 L320,60 L330,50 L380,50 L390,10 L410,90 L420,50 L500,50" />
+                        </svg>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Health AI at the Edge AI Assessment Panel */}
+                  {(() => {
+                    const isPatient3 = selectedPatient?.username === 'patient3' || selectedPatient?.username === 'testpatient3' || selectedPatient?._id === '3';
+                    const assessment = selectedPatient?.miniAssessment;
+                    const isMock = !assessment || assessment.includes('MOCK INFERENCE');
+                    return (
+                      <div className="glass-panel" style={{ padding: '14px 16px', margin: '0 0 12px 0', background: 'linear-gradient(135deg, rgba(0,212,170,0.06) 0%, rgba(0,212,170,0.02) 100%)', border: '1px solid rgba(0,212,170,0.3)', borderRadius: '10px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--teal)', fontSize: '0.8rem', fontWeight: '600' }}>
+                            <span>⚡</span> Edge Node · Health AI at the Edge AI Assessment
+                            {isPatient3 && <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 'normal' }}>(IoT Edge Device)</span>}
+                          </div>
+                          {!isMock ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.7rem', color: '#22c55e' }}>
+                              <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#22c55e', animation: 'pulse 2s infinite' }} />
+                              Live
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>Awaiting inference...</div>
+                          )}
+                        </div>
+                        <div style={{ background: 'rgba(0,0,0,0.2)', padding: '10px 12px', borderRadius: '8px', fontSize: '0.8rem', lineHeight: '1.65', color: isMock ? 'var(--text-dim)' : 'var(--text)', fontStyle: isMock ? 'italic' : 'normal', minHeight: '44px' }}>
+                          {isMock
+                            ? 'Awaiting next Health AI at the Edge inference cycle...'
+                            : assessment.replace(/MOCK INFERENCE:\s*/g, '').replace(/\*\*(.*?)\*\*/g, '$1').replace(/#+\s/g, '').trim()}
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   <div className="glass-panel chart-container" style={{ height: '360px', padding: '16px' }}>
                     <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '12px', fontWeight: 'bold', textTransform: 'uppercase' }}>
@@ -1336,9 +1376,16 @@ const DoctorDashboard = () => {
 const PatientDashboard = () => {
   const [profile, setProfile] = useState(null);
   const [latestVitals, setLatestVitals] = useState(null);
+  const [ecgData, setEcgData] = useState([]);
+  const [ecgOffset, setEcgOffset] = useState(0);
   const [socket, setSocket] = useState(null);
   const [callStatus, setCallStatus] = useState('');
   const { user } = useContext(AuthContext);
+  const ecgTickRef = useRef(0);
+
+  useEffect(() => {
+    // Legacy polling removed; ECG is now streamed directly via vitals_update websocket.
+  }, [profile]);
 
   useEffect(() => {
     const API_URL = import.meta.env.VITE_BACKEND_URL || `${window.location.protocol}//${window.location.hostname}:5000`;
@@ -1368,6 +1415,7 @@ const PatientDashboard = () => {
       // Using username to map to ID since our in-memory DB uses 1, 2 etc. 
       // A quick fetch of me gets the id. 
       // We will emit start monitoring with '1' or '2'
+      
       fetch(`${API_URL}/api/patients`, { headers: { 'Authorization': `Bearer ${token}` } })
         .then(res => res.json())
         .then(data => {
@@ -1375,56 +1423,34 @@ const PatientDashboard = () => {
            if (me) {
              newSocket.emit('start_monitoring', me._id);
              newSocket.on('vitals_update', (socketData) => {
-               if (String(socketData.vitals.patientId) === String(me._id)) {
+               const incomingId = String(socketData.vitals.patientId);
+               
+               // Map incoming Prorithm PIDs to the correct patient profile
+               let isMatch = incomingId === String(me._id);
+               if (!isMatch) {
+                 const isPatient3 = me.username === 'testpatient3' || me.username === 'patient3';
+                 const isPatient4 = me.username === 'testpatient4' || me.username === 'patient4';
+                 
+                 if (isPatient3 && (incomingId === '1049' || incomingId === '428' || incomingId === '1736')) isMatch = true;
+                 if (isPatient4 && incomingId === '1051') isMatch = true;
+               }
+
+               if (isMatch) {
                  setLatestVitals(socketData.vitals);
+                 if (socketData.vitals.ecg && socketData.vitals.ecg.length > 0) {
+                   setEcgData(prev => {
+                     const len = socketData.vitals.ecg.length;
+                     const interval = 2000 / len;
+                     const newData = socketData.vitals.ecg.map((val, idx) => ({ 
+                         time: Date.now() - 2000 + (idx * interval), 
+                         value: val 
+                     }));
+                     // Retain 500 points to show exactly 10 seconds of past data on a 50Hz signal
+                     return [...prev, ...newData].slice(-500);
+                   });
+                 }
                }
              });
-             
-             // Fallback if no vitals received from Edge stream after 5 seconds
-             setTimeout(() => {
-               setLatestVitals(current => {
-                 if (!current) {
-                   console.warn("No edge vitals received. Using simulated dummy telemetry.");
-                   if (window.patientDemoInterval) clearInterval(window.patientDemoInterval);
-                   window.lastPatVitals = null;
-                   
-                   // Generate first frame immediately to avoid blank screen
-                   const firstDummy = generateDummyVitals(me._id, window.lastPatVitals);
-                   window.lastPatVitals = firstDummy;
-                   
-                   // Fallback to Mac Mini Edge Polling
-                   const miniInterval = setInterval(async () => {
-                     try {
-                       const miniRes = await fetch('http://100.88.162.102:8000/dashboard/live');
-                       if (miniRes.ok) {
-                         const liveData = await miniRes.json();
-                         const myData = liveData.find(d => d.patient_id === me._id || d.patient_id === me.username);
-                         if (myData) {
-                           setLatestVitals({
-                             respirationRate: myData.respiration_rate || 16,
-                             heartRate: myData.heart_rate,
-                             bloodPressureSys: myData.systolic_bp,
-                             bloodPressureDia: myData.diastolic_bp,
-                             spO2: myData.spo2,
-                             temperature: 36.8,
-                             posture: 'Supine',
-                             steps: 0,
-                             fallDetected: false,
-                             ecgAnomaly: false
-                           });
-                           return; // Skip dummy if Mini succeeds
-                         }
-                       }
-                     } catch (e) {
-                       // Silently ignore errors
-                     }
-                   }, 3000);
-                   window.patientDemoInterval = miniInterval;
-                   return firstDummy;
-                 }
-                 return current;
-               });
-             }, 5000);
            }
         })
         .catch(() => {
@@ -1558,9 +1584,25 @@ const PatientDashboard = () => {
               <Activity size={18} color="#38bdf8" /> ECG
             </div>
             <div style={{ height: '100px', width: '100%', position: 'relative', overflow: 'hidden' }}>
-              <svg viewBox="0 0 500 100" style={{ width: '100%', height: '100%', stroke: '#38bdf8', fill: 'none', strokeWidth: 2 }}>
-                <path className={latestVitals ? "ecg-line-animate" : ""} d="M0,50 L50,50 L60,30 L70,70 L80,50 L100,50 L110,40 L120,60 L130,50 L180,50 L190,10 L210,90 L220,50 L250,50 L260,30 L270,70 L280,50 L300,50 L310,40 L320,60 L330,50 L380,50 L390,10 L410,90 L420,50 L500,50" />
-              </svg>
+              {ecgData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={ecgData.slice(-500)}>
+                    <Tooltip contentStyle={{ backgroundColor: 'rgba(15, 23, 42, 0.9)', border: 'none', color: '#fff' }} />
+                    <Line 
+                      type="monotone" 
+                      dataKey="value" 
+                      stroke="#38bdf8" 
+                      strokeWidth={2} 
+                      dot={false} 
+                      isAnimationActive={false} 
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <svg viewBox="0 0 500 100" style={{ width: '100%', height: '100%', stroke: '#38bdf8', fill: 'none', strokeWidth: 2 }}>
+                  <path className={latestVitals ? "ecg-line-animate" : ""} d="M0,50 L50,50 L60,30 L70,70 L80,50 L100,50 L110,40 L120,60 L130,50 L180,50 L190,10 L210,90 L220,50 L250,50 L260,30 L270,70 L280,50 L300,50 L310,40 L320,60 L330,50 L380,50 L390,10 L410,90 L420,50 L500,50" />
+                </svg>
+              )}
             </div>
           </div>
 
@@ -1569,9 +1611,9 @@ const PatientDashboard = () => {
               <Thermometer size={18} color="#38bdf8" /> Temperature
             </div>
             <div className="vital-value" style={{ margin: '15px 0 5px 0', fontSize: '3rem', color: '#fff', fontWeight: 'bold' }}>
-              {latestVitals ? '36.8' : '--'}
+              {latestVitals?.temperature || '--'}
             </div>
-            <div style={{ color: '#bae6fd', fontSize: '0.85rem' }}>°C</div>
+            <div style={{ color: '#bae6fd', fontSize: '0.85rem' }}>°F</div>
           </div>
 
           <div className="glass-panel vital-card" style={{ padding: '20px', background: 'rgba(14, 165, 233, 0.15)', borderColor: 'rgba(56, 189, 248, 0.3)' }}>
@@ -1584,44 +1626,10 @@ const PatientDashboard = () => {
             <div style={{ color: '#bae6fd', fontSize: '0.85rem' }}>%</div>
           </div>
 
-          <div className="glass-panel vital-card" style={{ padding: '20px', background: 'rgba(14, 165, 233, 0.15)', borderColor: 'rgba(56, 189, 248, 0.3)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#bae6fd', fontSize: '0.8rem', textTransform: 'uppercase' }}>
-              <Footprints size={18} color="#38bdf8" /> Steps
-            </div>
-            <div className="vital-value" style={{ margin: '15px 0 5px 0', fontSize: '3rem', color: '#fff', fontWeight: 'bold' }}>
-              {latestVitals?.steps || '--'}
-            </div>
-            <div style={{ color: '#bae6fd', fontSize: '0.85rem' }}>Count</div>
-          </div>
 
-          <div className="glass-panel vital-card" style={{ padding: '20px', background: 'rgba(14, 165, 233, 0.15)', borderColor: 'rgba(56, 189, 248, 0.3)', gridColumn: 'span 1' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#bae6fd', fontSize: '0.8rem', textTransform: 'uppercase' }}>
-              <Accessibility size={18} color="#38bdf8" /> Posture
-            </div>
-            <div className="vital-value" style={{ margin: '15px 0 5px 0', fontSize: '2rem', color: '#fff', fontWeight: 'bold' }}>
-              {latestVitals?.posture || '--'}
-            </div>
-          </div>
-
-          <div className="glass-panel vital-card" style={{ padding: '20px', background: 'rgba(14, 165, 233, 0.15)', borderColor: 'rgba(56, 189, 248, 0.3)', gridColumn: 'span 2' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#bae6fd', fontSize: '0.8rem', textTransform: 'uppercase' }}>
-                        <ShieldAlert size={18} color="#38bdf8" /> Fall Detection
-            </div>
-            <div className="vital-value" style={{ margin: '15px 0 5px 0', fontSize: '2rem', color: latestVitals?.fallDetected ? '#ff4d6a' : 'var(--teal)', fontWeight: 'bold' }}>
-              {latestVitals ? (latestVitals.fallDetected ? 'Fall Detected' : 'No falls detected') : '--'}
-            </div>
-          </div>
 
           {profile && (
             <>
-              <div style={{ gridColumn: 'span 3' }}>
-                <EHRManager 
-                  patientId={profile._id} 
-                  patientName={profile.name || profile.username} 
-                  patientAge={profile.age}
-                />
-              </div>
-
               <div style={{ gridColumn: 'span 3' }}>
                 <CareSchedule 
                   patientId={profile._id} 

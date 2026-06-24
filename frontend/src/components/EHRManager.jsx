@@ -35,7 +35,7 @@ const EHRManager = ({ patientId, patientName, patientAge, patientGender }) => {
 
     const API_URL = import.meta.env.VITE_BACKEND_URL || `${window.location.protocol}//${window.location.hostname}:5000`;
     const token = JSON.parse(localStorage.getItem('cliniaura_user'))?.token || '';
-    const apiKey = localStorage.getItem('medgemma_api_key') || '';
+    const apiKey = localStorage.getItem('health_ai_api_key') || '';
 
     try {
       const res = await fetch(`${API_URL}/api/ehr/upload`, {
@@ -125,7 +125,7 @@ const EHRManager = ({ patientId, patientName, patientAge, patientGender }) => {
             </button>
           </div>
           <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>
-            Uploading an EHR will automatically index the text into the MedGemma Agent RAG Vector Database.
+            Uploading an EHR will automatically index the text into the Health AI at the Edge Agent RAG Vector Database.
           </p>
         </div>
 

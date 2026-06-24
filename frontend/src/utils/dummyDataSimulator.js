@@ -1,51 +1,9 @@
-// CliniAura Dummy Data Simulator - Strict MedGemma Rules Implementation
+// CliniAura Dummy Data Simulator - Strict Health AI at the Edge Rules Implementation
 
 export const generateDummyPatients = () => [
   {
-    _id: "1",
-    patientId: "CLA-2026-00001",
-    username: "testpatient1",
-    name: "Arjun Mehta",
-    age: 45,
-    gender: "Male",
-    primaryDiagnosis: "Sepsis",
-    assignedNurse: "testnurse1",
-    assignedDoctor: "testdoctor1",
-    role: "PATIENT",
-    ward: "ICU",
-    riskScore: "Critical",
-    activeProtocol: "Sepsis Resuscitation Bundles",
-    targetMAP: 65,
-    baselineCO: 4.5,
-    baselineSV: 60,
-    signalQualityIndex: 98,
-    batteryLevel: 95,
-    deviceType: "VitalPatch"
-  },
-  {
-    _id: "2",
-    patientId: "CLA-2026-00002",
-    username: "testpatient2",
-    name: "Priya Nair",
-    age: 62,
-    gender: "Female",
-    primaryDiagnosis: "Heart Failure",
-    assignedNurse: "testnurse1",
-    assignedDoctor: "testdoctor1",
-    role: "PATIENT",
-    ward: "Step-down Unit",
-    riskScore: "High",
-    activeProtocol: "Cardiac Output Optimization",
-    targetMAP: 70,
-    baselineCO: 4.0,
-    baselineSV: 55,
-    signalQualityIndex: 90,
-    batteryLevel: 80,
-    deviceType: "VitalPatch"
-  },
-  {
     _id: "3",
-    patientId: "CLA-2026-00003",
+    patientId: "1049",
     username: "RJones_G11",
     name: "Rajesh Jones",
     age: 55,
@@ -207,7 +165,7 @@ const calculateqSOFA = (vitals) => {
   return score;
 };
 
-export const generateMedGemmaAlert = (patientId, vitals) => {
+export const generateCliniAuraAlert = (patientId, vitals) => {
   if (vitals.sensorError) {
     return {
       id: `alert-${patientId}-${Date.now()}`,
@@ -241,7 +199,7 @@ export const generateMedGemmaAlert = (patientId, vitals) => {
     return {
       id: `alert-${patientId}-${Date.now()}`,
       patientId,
-      message: `MedGemma Alert: NEWS2 Score ${news2}, qSOFA ${qsofa}. Hemodynamic collapse risk. HR ${vitals.heartRate} bpm, MAP ${map} mmHg.`,
+      message: `Health AI at the Edge Alert: NEWS2 Score ${news2}, qSOFA ${qsofa}. Hemodynamic collapse risk. HR ${vitals.heartRate} bpm, MAP ${map} mmHg.`,
       details: {
         risk_level: "CRITICAL",
         confidence: "High",
@@ -255,7 +213,7 @@ export const generateMedGemmaAlert = (patientId, vitals) => {
     return {
       id: `alert-${patientId}-${Date.now()}`,
       patientId,
-      message: `MedGemma Alert: NEWS2 Score ${news2}. Early signs of deterioration.`,
+      message: `Health AI at the Edge Alert: NEWS2 Score ${news2}. Early signs of deterioration.`,
       details: {
         risk_level: "HIGH",
         confidence: "Moderate",

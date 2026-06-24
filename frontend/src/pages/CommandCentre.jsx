@@ -3,8 +3,7 @@ import useWardStore from '../stores/wardStore';
 import io from 'socket.io-client';
 import { Activity, Bell, CheckCircle, HeartPulse, Stethoscope, AlertTriangle, Search, Battery, Wifi, Zap, Plus, Sliders, Layers, RefreshCw, FileText, Users, X } from 'lucide-react';
 import { LineChart, Line, ResponsiveContainer, YAxis, Tooltip } from 'recharts';
-import { generateDummyPatients, generateDummyVitals, generateMedGemmaAlert } from '../utils/dummyDataSimulator';
-import EHRManager from '../components/EHRManager';
+import { generateDummyPatients, generateDummyVitals, generateCliniAuraAlert } from '../utils/dummyDataSimulator';
 import ABGManager from '../components/ABGManager';
 import CareSchedule from '../components/CareSchedule';
 import PatientCalls from '../components/PatientCalls';
@@ -54,67 +53,34 @@ const CommandCentre = () => {
         // Dummy interval fallback logic has been disabled here since Nano is the source of truth
       });
 
-    // --- NEW: Mac Mini Edge API Polling (Always runs) ---
-    const MINI_API = 'http://100.88.162.102:8000/dashboard/live';
-    const miniIntervalId = setInterval(async () => {
-      try {
-        const miniRes = await fetch(MINI_API);
-        if (miniRes.ok) {
-          const liveData = await miniRes.json();
-          
-          liveData.forEach(pData => {
-            const vitals = {
-              respirationRate: pData.respiration_rate || 16,
-              heartRate: pData.heart_rate,
-              bloodPressureSys: pData.systolic_bp,
-              bloodPressureDia: pData.diastolic_bp,
-              spO2: pData.spo2,
-              temperature: 36.8,
-              posture: 'Supine',
-              steps: 0,
-              fallDetected: false,
-              ecgAnomaly: false,
-            };
-            
-            let alertMsg = null;
-            if (pData.alerts && pData.alerts.length > 0) {
-              const latestAlert = pData.alerts[0];
-              alertMsg = `${latestAlert.severity.toUpperCase()}: ${latestAlert.reason}`;
-            }
-            
-            updateVitals(pData.patient_id, vitals, alertMsg);
-            
-            if (pData.assessment) {
-              setPatients(prevPts => prevPts.map(pt => 
-                pt.username === pData.patient_id || pt._id === pData.patient_id 
-                  ? { ...pt, miniAssessment: pData.assessment } 
-                  : pt
-              ));
-            }
-          });
-        }
-      } catch (e) {
-        // Silently ignore connection errors to edge device
-      }
-    }, 2000);
-    
-    window.dummyIntervalId = miniIntervalId;
-
     const socket = io(API_URL, { auth: { token, role: user?.role } });
     
+    const EDGE_ID_MAP = {
+      '428': ['patient3', 'testpatient3', '3'],
+      '1736': ['patient3', 'testpatient3', '3'],
+      '1049': ['patient3', 'testpatient3', '3'],
+      '1051': ['patient4', 'testpatient4', '4'],
+    };
+
     socket.on('vitals_update', (data) => {
       if (data?.vitals) {
-        updateVitals(data.vitals.patientId, data.vitals, null);
+        const mappedUsernames = EDGE_ID_MAP[String(data.vitals.patientId)];
+        if (mappedUsernames && mappedUsernames.length > 0) {
+          mappedUsernames.forEach(mappedId => updateVitals(mappedId, data.vitals, null));
+        }
       }
     });
 
-    socket.on('alarm:new', (data) => {
-      updateVitals(data.patientId, null, data.message);
-    });
+    // socket.on('alarm:new', (data) => {
+    //   const mappedUsernames = EDGE_ID_MAP[String(data.patientId)];
+    //   if (mappedUsernames && mappedUsernames.length > 0) {
+    //     mappedUsernames.forEach(mappedId => updateVitals(mappedId, null, data.message));
+    //   }
+    // });
 
-    socket.on('alarm:escalation', (data) => {
-      updateVitals(data.patientId, null, `ESCALATION: ${data.message}`);
-    });
+    // socket.on('alarm:escalation', (data) => {
+    //   updateVitals(data.patientId, null, `ESCALATION: ${data.message}`);
+    // });
 
     return () => {
       socket.close();
@@ -194,12 +160,13 @@ const CommandCentre = () => {
     
     const isMyPatientsView = showMyPatientsOnly || currentUserRole === 'NURSE';
     const matchesMyPatients = !isMyPatientsView || pt.assignedNurse === currentUserUsername || pt.assignedDoctor === currentUserUsername;
+    const isTestPatient = pt._id === '1' || pt._id === '2';
     
-    return matchesWard && matchesRisk && matchesSearch && matchesMyPatients;
+    return matchesWard && matchesRisk && matchesSearch && matchesMyPatients && !isTestPatient;
   });
 
   const wards = ['All', 'ICU', 'Emergency', 'Cardiology', 'General'];
-  const risks = ['All', 'Critical', 'High', 'Medium', 'Moderate', 'Low'];
+  const risks = ['All', 'Critical', 'Medium', 'Low'];
 
   if (loading) {
     return (
@@ -343,7 +310,7 @@ const CommandCentre = () => {
                 </div>
               ) : (
                 activeAlerts.map(alert => {
-                  const pt = patients.find(p => p._id === alert.patientId || p.patientId === alert.patientId);
+                  const pt = patients.find(p => p._id === alert.patientId || p.patientId === alert.patientId || p.username === alert.patientId);
                   return (
                     <div key={alert.id} style={{ background: 'rgba(255, 77, 106, 0.06)', border: '1px solid rgba(255, 77, 106, 0.3)', padding: '12px', borderRadius: '12px', animation: 'fade-up 0.3s ease-out' }}>
                       <div style={{ fontSize: '0.9rem', fontWeight: 'bold' }}>
@@ -381,18 +348,13 @@ const CommandCentre = () => {
               <p style={{ fontSize: '0.85rem' }}>Adjust your ward filter, risk parameters, or search string.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-2" style={{ gap: '20px' }}>
+            <div className="grid-responsive-2">
               {filteredPatients.map((pt, i) => {
-                const bedData = beds.find(b => b.patientId === pt._id || b.patientId === pt.patientId);
+                const bedData = beds.find(b => b.patientId === pt._id || b.patientId === pt.patientId || b.patientId === pt.username);
                 const v = bedData?.latestVitals;
-                const isCritical = activeAlerts.some(a => a.patientId === pt._id || a.patientId === pt.patientId);
+                const isCritical = activeAlerts.some(a => a.patientId === pt._id || a.patientId === pt.patientId || a.patientId === pt.username);
                 const dynamicRiskScore = isCritical ? 'CRITICAL' : (pt.riskScore || 'LOW');
                 const feedback = actionFeedback[pt._id];
-
-                // Calculate history trends safely
-                const sparkData = bedData?.history?.filter(h => h != null).map(h => ({ 
-                  val: Math.round(((h.bloodPressureSys || 90) + (2 * (h.bloodPressureDia || 60))) / 3) 
-                })) || [];
 
                 // SQI Color rating
                 const sqi = pt.signalQualityIndex !== undefined ? pt.signalQualityIndex : 95;
@@ -401,6 +363,8 @@ const CommandCentre = () => {
                 // Battery Rating
                 const bat = pt.batteryLevel !== undefined ? pt.batteryLevel : 92;
                 const batColor = bat > 50 ? '#22c55e' : bat > 20 ? '#ffa64d' : '#ff4d6a';
+
+                const currentAssessment = v?.assessment || pt.miniAssessment;
 
                 return (
                   <div 
@@ -456,26 +420,32 @@ const CommandCentre = () => {
                           <Battery size={12} color={batColor} />
                           <span>Bat: <strong style={{color: batColor}}>{bat}%</strong></span>
                         </div>
-                        <div className="truncate" style={{ maxWidth: '130px' }} title="Assigned IoT Hardware Anchor">
+                        <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
                           ⚓ {pt.deviceType || 'MBS-Adapter'}
                         </div>
                       </div>
 
                       {/* Vitals Overview Metrics */}
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '8px', background: 'var(--bg2)', padding: '10px', borderRadius: '10px', border: '1px solid rgba(0,212,170,0.05)' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '8px', background: 'var(--bg2)', padding: '10px', borderRadius: '10px', border: '1px solid rgba(0,212,170,0.05)' }}>
                         <div style={{ textAlign: 'center' }}>
                           <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Heart Rate</div>
                           <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: (v?.heartRate < 50 || v?.heartRate > 100) ? '#ff4d6a' : 'var(--text)' }}>
                             {v?.heartRate || '--'} <span style={{fontSize:'0.65rem', fontWeight:'normal', color:'var(--text-muted)'}}>bpm</span>
                           </div>
                         </div>
-                        <div style={{ textAlign: 'center', borderLeft: '1px solid var(--border)', borderRight: '1px solid var(--border)' }}>
+                        <div style={{ textAlign: 'center', borderLeft: '1px solid var(--border)' }}>
                           <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>SpO2 Sat</div>
                           <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: v?.spO2 < 94 ? '#ff4d6a' : 'var(--teal)' }}>
                             {v?.spO2 || '--'} <span style={{fontSize:'0.65rem', fontWeight:'normal', color:'var(--text-muted)'}}>%</span>
                           </div>
                         </div>
-                        <div style={{ textAlign: 'center' }}>
+                        <div style={{ textAlign: 'center', borderLeft: '1px solid var(--border)' }}>
+                          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>BP (Sys/Dia)</div>
+                          <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: (v?.bloodPressureSys < 90 || v?.bloodPressureSys > 140) ? '#ff4d6a' : 'var(--text)' }}>
+                            {v ? `${v.bloodPressureSys}/${v.bloodPressureDia}` : '--'}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'center', borderLeft: '1px solid var(--border)' }}>
                           <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Calc MAP</div>
                           <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: (v ? Math.round((v.bloodPressureSys + (2 * v.bloodPressureDia)) / 3) : 0) < 65 || (v ? Math.round((v.bloodPressureSys + (2 * v.bloodPressureDia)) / 3) : 0) > 110 ? '#ff4d6a' : 'var(--cyan)' }}>
                             {v ? Math.round((v.bloodPressureSys + (2 * v.bloodPressureDia)) / 3) : '--'} <span style={{fontSize:'0.65rem', fontWeight:'normal', color:'var(--text-muted)'}}>mmHg</span>
@@ -483,29 +453,23 @@ const CommandCentre = () => {
                         </div>
                       </div>
 
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px', marginBottom: '16px', background: 'var(--bg2)', padding: '6px', borderRadius: '10px', border: '1px solid rgba(0,212,170,0.05)' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '4px', marginBottom: '16px', background: 'var(--bg2)', padding: '6px', borderRadius: '10px', border: '1px solid rgba(0,212,170,0.05)' }}>
                         <div style={{ textAlign: 'center' }}>
                           <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Resp</div>
-                          <div style={{ fontSize: '1rem', fontWeight: 'bold', color: (v?.respirationRate < 12 || v?.respirationRate > 20) ? '#ff4d6a' : 'var(--text)' }}>
+                          <div style={{ fontSize: '0.9rem', fontWeight: 'bold', color: (v?.respirationRate < 12 || v?.respirationRate > 20) ? '#ff4d6a' : 'var(--text)' }}>
                             {v?.respirationRate || '--'}
                           </div>
                         </div>
                         <div style={{ textAlign: 'center', borderLeft: '1px solid var(--border)' }}>
-                          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Steps</div>
-                          <div style={{ fontSize: '1rem', fontWeight: 'bold', color: 'var(--text)' }}>
-                            {v?.steps !== undefined ? v.steps : '--'}
+                          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Temp</div>
+                          <div style={{ fontSize: '0.9rem', fontWeight: 'bold', color: 'var(--text)' }}>
+                            {v?.temperature || '--'}°F
                           </div>
                         </div>
                         <div style={{ textAlign: 'center', borderLeft: '1px solid var(--border)' }}>
-                          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Posture</div>
-                          <div style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--text)', marginTop: '2px' }}>
-                            {v?.posture || '--'}
-                          </div>
-                        </div>
-                        <div style={{ textAlign: 'center', borderLeft: '1px solid var(--border)' }}>
-                          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Falls</div>
-                          <div style={{ fontSize: '0.85rem', fontWeight: 'bold', color: v?.fallDetected ? '#ff4d6a' : 'var(--teal)', marginTop: '2px' }}>
-                            {v ? (v.fallDetected ? 'Yes' : 'No') : '--'}
+                          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>HRV</div>
+                          <div style={{ fontSize: '0.9rem', fontWeight: 'bold', color: 'var(--text)' }}>
+                            {v?.hrv !== undefined ? v.hrv : '--'}
                           </div>
                         </div>
                       </div>
@@ -516,9 +480,9 @@ const CommandCentre = () => {
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--teal)', fontSize: '0.8rem', fontWeight: '600' }}>
                               <Zap size={13} />
-                              Mac Mini · MedGemma AI
+                              Edge Node · Health AI at the Edge AI
                             </div>
-                            {pt.miniAssessment && !pt.miniAssessment.includes('MOCK') ? (
+                            {currentAssessment && !currentAssessment.includes('MOCK') ? (
                               <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.7rem', color: '#22c55e' }}>
                                 <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#22c55e', animation: 'pulse 2s infinite' }} />
                                 Live
@@ -527,11 +491,11 @@ const CommandCentre = () => {
                               <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>Awaiting inference...</div>
                             )}
                           </div>
-                          <div style={{ background: 'rgba(0,0,0,0.2)', padding: '10px 12px', borderRadius: '8px', fontSize: '0.78rem', lineHeight: '1.6', color: pt.miniAssessment && !pt.miniAssessment.includes('MOCK') ? 'var(--text)' : 'var(--text-dim)', minHeight: '48px', fontStyle: pt.miniAssessment && !pt.miniAssessment.includes('MOCK') ? 'normal' : 'italic' }}>
+                          <div style={{ background: 'rgba(0,0,0,0.2)', padding: '10px 12px', borderRadius: '8px', fontSize: '0.78rem', lineHeight: '1.6', color: currentAssessment && !currentAssessment.includes('MOCK') ? 'var(--text)' : 'var(--text-dim)', minHeight: '48px', fontStyle: currentAssessment && !currentAssessment.includes('MOCK') ? 'normal' : 'italic' }}>
                             {(() => {
-                              const raw = pt.miniAssessment || '';
+                              const raw = currentAssessment || '';
                               if (!raw || raw.includes('MOCK INFERENCE')) {
-                                return 'Awaiting next MedGemma inference cycle...';
+                                return 'Awaiting next Health AI at the Edge inference cycle...';
                               }
                               const clean = raw
                                 .replace(/\*\*(.*?)\*\*/g, '$1')
@@ -548,15 +512,15 @@ const CommandCentre = () => {
                             onClick={() => {
                               const printWindow = window.open('', '_blank');
                               const dateStr = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
-                              const assessmentText = pt.miniAssessment
-                                ? pt.miniAssessment.replace(/MOCK INFERENCE:\s*/g, '').replace(/\*\*/g, '')
+                              const assessmentText = currentAssessment
+                                ? currentAssessment.replace(/MOCK INFERENCE:\s*/g, '').replace(/\*\*/g, '')
                                 : 'Stable telemetry stream.';
                               const mapVal = v ? Math.round((v.bloodPressureSys + (2 * v.bloodPressureDia)) / 3) : '--';
                               printWindow.document.write(
-                                '<html><head><title>MedGemma Assessment</title>' +
+                                '<html><head><title>Health AI at the Edge Assessment</title>' +
                                 '<style>body{font-family:sans-serif;padding:20px;line-height:1.6}h1{color:#333;border-bottom:2px solid #333;padding-bottom:10px}.section{margin-bottom:20px}</style>' +
                                 '</head><body>' +
-                                '<h1>MedGemma Clinical Assessment</h1>' +
+                                '<h1>Health AI at the Edge Clinical Assessment</h1>' +
                                 '<div class="section"><strong>Patient:</strong> ' + (pt.name || pt.username) + ' (' + (pt.patientId || 'N/A') + ')<br>' +
                                 '<strong>Date:</strong> ' + dateStr + '</div>' +
                                 '<div class="section"><h2>Vitals Snapshot</h2>' +
@@ -648,7 +612,6 @@ const CommandCentre = () => {
                     {/* Tabs */}
                     <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
                       <button onClick={() => setActiveTab('SCHEDULE')} style={{ padding: '8px 16px', borderRadius: '100px', border: 'none', background: activeTab === 'SCHEDULE' ? 'var(--teal)' : 'var(--surface2)', color: activeTab === 'SCHEDULE' ? 'var(--bg)' : 'var(--text)', fontWeight: 'bold', cursor: 'pointer' }}>Care Schedule</button>
-                      {/* <button onClick={() => setActiveTab('EHR')} style={{ padding: '8px 16px', borderRadius: '100px', border: 'none', background: activeTab === 'EHR' ? 'var(--cyan)' : 'var(--surface2)', color: activeTab === 'EHR' ? 'var(--bg)' : 'var(--text)', fontWeight: 'bold', cursor: 'pointer' }}>EHR Documents</button> */}
                       <button onClick={() => setActiveTab('ABG')} style={{ padding: '8px 16px', borderRadius: '100px', border: 'none', background: activeTab === 'ABG' ? '#38bdf8' : 'var(--surface2)', color: activeTab === 'ABG' ? 'var(--bg)' : 'var(--text)', fontWeight: 'bold', cursor: 'pointer' }}>ABG Lab Results</button>
                     </div>
                     
@@ -660,13 +623,7 @@ const CommandCentre = () => {
                       />
                     )}
                     
-                    {/* activeTab === 'EHR' && (
-                      <EHRManager 
-                        patientId={pt._id} 
-                        patientName={pt.name || pt.username} 
-                        patientAge={pt.age}
-                      />
-                    ) */}
+
                     
                     {activeTab === 'ABG' && (
                       <ABGManager 

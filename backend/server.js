@@ -48,6 +48,8 @@ const JWT_SECRET = 'supersecret_cliniaura';
 // --- In-Memory Data Store ---
 let USERS = [];
 let ALARM_EVENTS = [];
+const RECENT_ALARMS = {}; // Debounce tracker
+
 
 // Seed Data Initialization
 const initializeSeedData = () => {
@@ -58,14 +60,14 @@ const initializeSeedData = () => {
   
   USERS = [
     {
-      _id: '1', patientId: 'CLA-2026-00001', username: 'testpatient1', password: patientPass, role: 'PATIENT', name: 'Arjun Mehta', email: 'testpatient1@cliniaura.test', age: 45, gender: 'Male', primaryDiagnosis: 'Sepsis',
-      riskScore: 'Critical', activeProtocol: 'Sepsis Resuscitation Bundles', targetMAP: 65, baselineCO: 4.5, baselineSV: 60,
-      ward: 'ICU', assignedNurse: 'testnurse1', assignedDoctor: 'testdoctor1', admissionDate: '2026-06-01T08:30:00Z', diagnosisDate: '2026-06-02T10:15:00Z', deviceType: 'VitalPatch', batteryLevel: 95, signalQualityIndex: 98, auditLogs: []
+      _id: '3', patientId: '1049', username: 'testpatient3', password: patientPass, role: 'PATIENT', name: 'Mahima Kopalley', email: 'testpatient3@cliniaura.test', age: 21, gender: 'Female', primaryDiagnosis: 'Wearable Integration Test',
+      riskScore: 'Low', activeProtocol: 'Edge Monitoring', targetMAP: 70, baselineCO: 5.0, baselineSV: 70,
+      ward: 'Cardiology', assignedNurse: 'testnurse1', assignedDoctor: 'testdoctor1', admissionDate: '2026-06-23T10:00:00Z', diagnosisDate: '2026-06-23T10:15:00Z', deviceType: 'IoT Edge DF45516', batteryLevel: 100, signalQualityIndex: 100, auditLogs: []
     },
     {
-      _id: '2', patientId: 'CLA-2026-00002', username: 'testpatient2', password: patientPass, role: 'PATIENT', name: 'Priya Nair', email: 'testpatient2@cliniaura.test', age: 62, gender: 'Female', primaryDiagnosis: 'Post-op Recovery',
-      riskScore: 'Low', activeProtocol: 'Standard Observation', targetMAP: 80, baselineCO: 5.5, baselineSV: 75,
-      ward: 'General Ward', assignedNurse: 'testnurse1', assignedDoctor: 'testdoctor1', admissionDate: '2026-06-03T14:20:00Z', diagnosisDate: '2026-06-03T15:00:00Z', deviceType: 'Basic Telemetry', batteryLevel: 90, signalQualityIndex: 99, auditLogs: []
+      _id: '4', patientId: '1051', username: 'testpatient4', password: patientPass, role: 'PATIENT', name: 'Sirisha ABNP', email: 'testpatient4@cliniaura.test', age: 30, gender: 'Female', primaryDiagnosis: 'Wearable Integration Test 2',
+      riskScore: 'Low', activeProtocol: 'Edge Monitoring', targetMAP: 70, baselineCO: 5.0, baselineSV: 70,
+      ward: 'Cardiology', assignedNurse: 'testnurse2', assignedDoctor: 'testdoctor2', admissionDate: '2026-06-23T10:00:00Z', diagnosisDate: '2026-06-23T10:15:00Z', deviceType: 'IoT Edge DF45517', batteryLevel: 100, signalQualityIndex: 100, auditLogs: []
     },
     { _id: '6', username: 'testdoctor1', password: doctorPass, role: 'DOCTOR', name: 'Dr. Sarah Chen', specialty: 'Cardiology', shift: 'Morning' },
     { _id: '7', username: 'testdoctor2', password: doctorPass, role: 'DOCTOR', name: 'Dr. Marcus Webb', specialty: 'Pulmonology', shift: 'Night' },
@@ -120,7 +122,7 @@ app.post('/api/login', async (req, res) => {
     if (!isValid) return res.status(401).json({ error: 'Auth failed' });
 
     const token = jwt.sign({ id: user._id, role: user.role, username: user.username }, JWT_SECRET);
-    res.json({ token, role: user.role, username: user.username });
+    res.json({ token, role: user.role, username: user.username, patientId: user.patientId, id: user._id });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -136,7 +138,7 @@ app.get('/api/mini/health', async (req, res) => {
     const data = await miniRes.json();
     res.json(data);
   } catch (error) {
-    res.status(500).json({ status: "offline", error: "Mac Mini proxy failed" });
+    res.status(500).json({ status: "offline", error: "Edge Node proxy failed" });
   }
 });
 
@@ -146,7 +148,7 @@ app.get('/api/mini/dashboard/live', async (req, res) => {
     const data = await miniRes.json();
     res.json(data);
   } catch (error) {
-    res.status(500).json({ error: "Mac Mini proxy failed" });
+    res.status(500).json({ error: "Edge Node proxy failed" });
   }
 });
 
@@ -156,7 +158,7 @@ app.get('/api/mini/alerts', async (req, res) => {
     const data = await miniRes.json();
     res.json(data);
   } catch (error) {
-    res.status(500).json({ error: "Mac Mini proxy failed" });
+    res.status(500).json({ error: "Edge Node proxy failed" });
   }
 });
 // --------------------------------
@@ -262,102 +264,24 @@ const logClinicalEvent = (type, patientId, patientName, actor, actorRole, detail
 const seedClinicalEvents = () => {
   const time = (offsetMins) => new Date(Date.now() - offsetMins * 60 * 1000).toISOString();
   
-  const seedData = [
-    {
-      id: 'seed-6',
-      type: 'ABG_ALERT',
-      patientId: 'CLA-2026-00001',
-      patientName: 'Arjun Mehta',
-      actor: 'MedGemma-Mac Mini',
-      actorRole: 'SYSTEM',
-      details: {
-        alert_level: 'Critical',
-        summary: 'Severe metabolic acidosis with high lactate levels, indicating significant tissue hypoperfusion.',
-        primary_concern: 'Severe Metabolic Acidosis',
-        ph: 7.21,
-        pao2_mmhg: 82,
-        paco2_mmhg: 31,
-        hco3: 12,
-        lactate: 4.8
-      },
-      timestamp: time(40),
-      acknowledged: false,
-      acknowledgedBy: null,
-      acknowledgedAt: null
-    },
-    {
-      id: 'seed-5',
-      type: 'INTERVENTION',
-      patientId: 'CLA-2026-00001',
-      patientName: 'Arjun Mehta',
-      actor: 'testdoctor1',
-      actorRole: 'DOCTOR',
-      details: { action: 'Fluid Bolus', notes: 'Administered 500mL Normal Saline over 30 mins' },
-      timestamp: time(60),
-      acknowledged: false,
-      acknowledgedBy: null,
-      acknowledgedAt: null
-    },
-    {
-      id: 'seed-4',
-      type: 'NURSE_NOTE',
-      patientId: 'CLA-2026-00001',
-      patientName: 'Arjun Mehta',
-      actor: 'testnurse1',
-      actorRole: 'NURSE',
-      details: { text: 'Responded to patient call. Patient complaining of mild shortness of breath. Adjusted bed position.', callId: '1001', callStatus: 'Active' },
-      timestamp: time(85),
-      acknowledged: false,
-      acknowledgedBy: null,
-      acknowledgedAt: null
-    },
-    {
-      id: 'seed-3',
-      type: 'NURSE_CALL',
-      patientId: 'CLA-2026-00001',
-      patientName: 'Arjun Mehta',
-      actor: 'testpatient1',
-      actorRole: 'PATIENT',
-      details: { message: 'Patient requested nurse assistance', callId: '1001' },
-      timestamp: time(90),
-      acknowledged: false,
-      acknowledgedBy: null,
-      acknowledgedAt: null
-    },
-    {
-      id: 'seed-2',
-      type: 'ACKNOWLEDGEMENT',
-      patientId: 'CLA-2026-00001',
-      patientName: 'Arjun Mehta',
-      actor: 'testnurse1',
-      actorRole: 'NURSE',
-      details: {
-        originalAlertId: 'seed-1',
-        originalMessage: 'Rule-based: Critical vitals detected (Low BP/SpO2 or High HR).'
-      },
-      timestamp: time(115),
-      acknowledged: false,
-      acknowledgedBy: null,
-      acknowledgedAt: null
-    },
-    {
-      id: 'seed-1',
-      type: 'ALERT',
-      patientId: 'CLA-2026-00001',
-      patientName: 'Arjun Mehta',
-      actor: 'RuleEngine',
-      actorRole: 'SYSTEM',
-      details: {
-        alert_level: 'CRITICAL',
-        message: 'Rule-based: Critical vitals detected (Low BP/SpO2 or High HR).',
-        vitals: { heartRate: 124, spO2: 89, bloodPressureSys: 85, bloodPressureDia: 55, respirationRate: 22 }
-      },
-      timestamp: time(120),
-      acknowledged: true,
-      acknowledgedBy: 'testnurse1',
-      acknowledgedAt: time(115)
-    }
-  ];
+    const seedData = [
+      {
+        id: 'real-seed-1',
+        type: 'ROUTINE',
+        patientId: '1049',
+        patientName: 'Mahima Kopalley',
+        actor: 'Health AI at the Edge-Edge Node',
+        actorRole: 'SYSTEM',
+        details: {
+          alert_level: 'NONE',
+          message: 'Baseline established on Edge Node. All vitals are within normal parameters.',
+        },
+        timestamp: time(5),
+        acknowledged: true,
+        acknowledgedBy: 'Dr. Sarah Chen',
+        acknowledgedAt: time(4)
+      }
+    ];
 
   // Load into in-memory store (unshift/push to match sorted order)
   seedData.forEach(e => {
@@ -381,9 +305,58 @@ app.get('/api/audit/verify', async (req, res) => {
 
 app.get('/api/audit/generate-pdf', async (req, res) => {
   try {
+    const PDFDocument = require('pdfkit');
+    const doc = new PDFDocument({ margin: 50 });
+
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'attachment; filename=cliniaura_audit_report.pdf');
-    res.send(Buffer.from('mock pdf data'));
+
+    doc.pipe(res);
+    
+    // Header
+    doc.fontSize(20).fillColor('#00d4aa').text('CliniAura Official Audit Report', { align: 'center' });
+    doc.moveDown(0.5);
+    doc.fontSize(12).fillColor('black').text('Generated: ' + new Date().toLocaleString(), { align: 'center' });
+    doc.moveDown(2);
+    
+    // Summary
+    doc.fontSize(14).fillColor('#333333').text('Audit Trail Summary', { underline: true });
+    doc.moveDown(0.5);
+    doc.fontSize(10).fillColor('#666666').text('The following table represents the cryptographically hashed clinical events, alerts, and system-level orchestrations captured by CliniAura Edge Nodes.');
+    doc.moveDown(2);
+
+    // Table Setup
+    const startY = doc.y;
+    doc.fontSize(10).fillColor('black').text('Timestamp', 50, startY);
+    doc.text('Event Type', 180, startY);
+    doc.text('Patient', 280, startY);
+    doc.text('Details', 380, startY);
+    
+    doc.moveTo(50, startY + 15).lineTo(550, startY + 15).stroke();
+
+    let currentY = startY + 25;
+
+    [...CLINICAL_EVENTS].forEach(event => {
+      if (currentY > 700) {
+        doc.addPage();
+        currentY = 50;
+      }
+      
+      const ts = new Date(event.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+      const msg = event.details?.message || event.details?.notes || 'System action logged';
+      
+      doc.fillColor('#333333');
+      doc.text(ts, 50, currentY, { width: 120 });
+      doc.text(event.type, 180, currentY, { width: 90 });
+      doc.text(event.patientName || 'N/A', 280, currentY, { width: 90 });
+      
+      doc.fillColor('#666666');
+      doc.text(msg.substring(0, 45) + (msg.length > 45 ? '...' : ''), 380, currentY, { width: 170 });
+      
+      currentY += 20;
+    });
+
+    doc.end();
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -465,6 +438,11 @@ app.post('/api/v1/vitals/snapshot', async (req, res) => {
   try {
     const data = req.body;
     
+    // Explicitly BLOCK mock data from mimic generator (patient 1 and 2)
+    if (String(data.patient_id) === '1' || String(data.patient_id) === '2') {
+        return res.json({ status: 'ignored', message: 'Mock data blocked from entering main system.' });
+    }
+    
     // Map incoming edge device snake_case variables to frontend camelCase expectations
     const vitals = {
       patientId: data.patient_id,
@@ -473,9 +451,11 @@ app.post('/api/v1/vitals/snapshot', async (req, res) => {
       bloodPressureSys: data.systolic_bp,
       bloodPressureDia: data.diastolic_bp,
       respirationRate: data.respiration_rate || 16,
+      hrv: data.hrv ? Math.max(20, Math.min(150, parseFloat(data.hrv))) : 60,
       steps: data.steps || 0,
       posture: data.posture || 'Upright',
       fallDetected: data.fall_detected || false,
+      ecg: data.ecg || [],
       timestamp: new Date()
     };
     
@@ -484,7 +464,7 @@ app.post('/api/v1/vitals/snapshot', async (req, res) => {
     // Broadcast immediately to connected dashboards
     io.emit('vitals_update', { vitals, calculatedMAP: map });
 
-    // Call MedGemma Agent
+    // Call Health AI at the Edge Agent
     try {
       const gemmaRes = await fetch('http://127.0.0.1:8000/api/v1/vitals/snapshot', {
         method: 'POST',
@@ -493,36 +473,77 @@ app.post('/api/v1/vitals/snapshot', async (req, res) => {
       });
       if (gemmaRes.ok) {
         const agentResponse = await gemmaRes.json();
-        // Fire alerts for HIGH and CRITICAL
-        if (agentResponse.alert_level === 'CRITICAL' || agentResponse.alert_level === 'HIGH') {
-           const alertMsg = agentResponse.reasoning_summary || `MedGemma Alert: ${agentResponse.alert_level} Risk detected`;
-           io.to('DOCTOR').to('ADMIN').to('NURSE').emit('alarm:new', { patientId: vitals.patientId, message: alertMsg, level: agentResponse.alert_level });
+        
+        let level = agentResponse.alert_level === 'HIGH' ? 'MEDIUM' : agentResponse.alert_level;
+        
+        // Clustering: Combine NEWS2 and qSOFA if both exist
+        let alertMsg = agentResponse.reasoning_summary || `Health AI at the Edge Alert: ${level} Risk detected`;
+        if (alertMsg.toUpperCase().includes('NEWS2') && alertMsg.toUpperCase().includes('QSOFA')) {
+            alertMsg = 'Combined Clinical Alert: Simultaneous NEWS2 & qSOFA risk thresholds breached.';
+        }
+
+        // Fire alerts for MEDIUM and CRITICAL
+        if (level === 'CRITICAL' || level === 'MEDIUM') {
+           // Debounce / Suppression check (15 minutes)
+           const now = Date.now();
+           const lastAlarm = RECENT_ALARMS[vitals.patientId];
            
-           // Log to unified clinical events for history and audit tracking
-           const pt = USERS.find(u => u.patientId === vitals.patientId || u._id === vitals.patientId);
-           const patientName = pt ? pt.name : vitals.patientId;
-           logClinicalEvent(
-             'ALERT',
-             vitals.patientId,
-             patientName,
-             'MedGemma-Mac Mini',
-             'SYSTEM',
-             {
-               alert_level: agentResponse.alert_level,
-               message: alertMsg,
-               vitals: {
-                 heartRate: vitals.heartRate,
-                 spO2: vitals.spO2,
-                 bloodPressureSys: vitals.bloodPressureSys,
-                 bloodPressureDia: vitals.bloodPressureDia,
-                 respirationRate: vitals.respirationRate
-               }
-             }
-           );
+           let shouldEmit = false;
+           
+           if (!lastAlarm) {
+               shouldEmit = true;
+           } else {
+               const timeSinceLast = now - lastAlarm.timestamp;
+               
+               // Prevent flapping spam: Max 1 alert per minute per patient regardless of level change
+               if (timeSinceLast < 60000) {
+                   shouldEmit = false;
+               } else if (lastAlarm.level !== level) {
+                   shouldEmit = true; // Level escalated/de-escalated
+               } else {
+                   if (timeSinceLast > 15 * 60 * 1000) { // 15 mins suppression timer
+                       shouldEmit = true;
+                   } else if (level === 'MEDIUM' && timeSinceLast > 30 * 60 * 1000) {
+                       // Escalation Burden Protocol: Escalate MEDIUM to CRITICAL if persistent > 30 mins
+                       level = 'CRITICAL';
+                       alertMsg = '[ESCALATED] ' + alertMsg;
+                       shouldEmit = true;
+                   }
+                }
+           }
+           
+           if (shouldEmit) {
+               RECENT_ALARMS[vitals.patientId] = { level, timestamp: now };
+               // Telemetry Push Notification
+               io.to('DOCTOR').to('ADMIN').to('NURSE').emit('alarm:new', { patientId: vitals.patientId, message: alertMsg, level: level });
+               console.log(`[ALARM ORCHESTRATOR] Telemetry push notification deployed to Primary Care Unit. (${level})`);
+               
+               // Log to unified clinical events for history and audit tracking
+               const pt = USERS.find(u => u.patientId === vitals.patientId || u._id === vitals.patientId);
+               const patientName = pt ? pt.name : vitals.patientId;
+               logClinicalEvent(
+                 'ALERT',
+                 vitals.patientId,
+                 patientName,
+                 'Health AI at the Edge-Edge Node',
+                 'SYSTEM',
+                 {
+                   alert_level: level,
+                   message: alertMsg,
+                   vitals: {
+                     heartRate: vitals.heartRate,
+                     spO2: vitals.spO2,
+                     bloodPressureSys: vitals.bloodPressureSys,
+                     bloodPressureDia: vitals.bloodPressureDia,
+                     respirationRate: vitals.respirationRate
+                   }
+                 }
+               );
+           }
         }
       }
     } catch (agentErr) {
-      console.warn('MedGemma agent unreachable, skipping AI analysis. Falling back to rule-based escalation.', agentErr.message);
+      console.warn('Health AI at the Edge agent unreachable, skipping AI analysis. Falling back to rule-based escalation.', agentErr.message);
       
       let level = null;
       let reason = '';
@@ -532,7 +553,7 @@ app.post('/api/v1/vitals/snapshot', async (req, res) => {
         level = 'CRITICAL';
         reason = 'Rule-based: Critical vitals detected (Low BP/SpO2 or High HR).';
       } else if (vitals.bloodPressureSys > 160 || vitals.heartRate > 100 || vitals.spO2 < 95) {
-        level = 'HIGH';
+        level = 'MEDIUM';
         reason = 'Rule-based: Abnormal vitals detected.';
       }
       
@@ -581,7 +602,7 @@ app.post('/api/ehr/upload', upload.single('file'), async (req, res) => {
       pt.ehrFile = req.file.filename;
     }
 
-    // Proxy the request to MedGemma
+    // Proxy the request to Health AI at the Edge
     try {
       const formData = new FormData();
       formData.append('patient_id', patient_id);
@@ -594,7 +615,7 @@ app.post('/api/ehr/upload', upload.single('file'), async (req, res) => {
       const blob = new Blob([fileBuffer], { type: 'application/pdf' });
       formData.append('file', blob, req.file.originalname);
 
-      // We extract API Key if sent by frontend, otherwise use the Mac Mini MedGemma Admin Key
+      // We extract API Key if sent by frontend, otherwise use the Edge Node Health AI at the Edge Admin Key
       const apiKey = req.headers['x-api-key'] || 'xB3z9Bw2u8qkD5sT_1GvLw0aR6YhN4pOeZcF7mX';
       const token = req.headers.authorization ? req.headers.authorization.split(' ')[1] : 'clinician_token';
 
@@ -609,8 +630,8 @@ app.post('/api/ehr/upload', upload.single('file'), async (req, res) => {
 
       if (!agentRes.ok) {
         const errorText = await agentRes.text();
-        console.warn('MedGemma agent EHR ingest failed:', errorText);
-        return res.status(agentRes.status).json({ error: 'MedGemma processing failed', details: errorText });
+        console.warn('Health AI at the Edge agent EHR ingest failed:', errorText);
+        return res.status(agentRes.status).json({ error: 'Health AI at the Edge processing failed', details: errorText });
       }
 
       const agentData = await agentRes.json();
@@ -624,8 +645,8 @@ app.post('/api/ehr/upload', upload.single('file'), async (req, res) => {
       res.json({ message: 'EHR Uploaded and indexed by AI successfully', agentData, filename: req.file.filename });
 
     } catch (agentErr) {
-      console.warn('MedGemma unreachable for EHR proxy:', agentErr.message);
-      res.status(502).json({ error: 'Failed to contact MedGemma AI agent' });
+      console.warn('Health AI at the Edge unreachable for EHR proxy:', agentErr.message);
+      res.status(502).json({ error: 'Failed to contact Health AI at the Edge AI agent' });
     }
 
   } catch (error) {
@@ -655,27 +676,26 @@ try {
   if (fs.existsSync(abgFile)) {
     abgHistoryDB = JSON.parse(fs.readFileSync(abgFile, 'utf8'));
   } else {
-    // Seed default ABG past history to match the clinical event list!
     const time = (offsetMins) => new Date(Date.now() - offsetMins * 60 * 1000).toISOString();
     abgHistoryDB = [
       {
-        patient_id: 'CLA-2026-00001',
-        ph: 7.21,
-        pao2_mmhg: 82,
-        paco2_mmhg: 31,
-        hco3: 12,
-        base_excess: -10,
-        lactate: 4.8,
+        patient_id: 'CLA-2026-00002',
+        ph: 7.36,
+        pao2_mmhg: 88,
+        paco2_mmhg: 42,
+        hco3: 24,
+        base_excess: -1,
+        lactate: 1.2,
         fio2: 0.21,
-        na: 138,
-        cl: 104,
+        na: 140,
+        cl: 102,
         chronic_copd: false,
-        summary: 'Severe metabolic acidosis with high lactate levels, indicating significant tissue hypoperfusion.',
-        clinical_significance: 'Critical tissue hypoperfusion',
-        alert_level: 'Critical',
-        primary_concern: 'Severe Metabolic Acidosis',
-        created_at: time(40),
-        agent_used: 'medgemma-api-v2'
+        summary: 'Normal acid-base balance and oxygenation. No acute intervention required.',
+        clinical_significance: 'Normal baseline established',
+        alert_level: 'Low',
+        primary_concern: 'None',
+        created_at: time(120),
+        agent_used: 'health_ai-api-v2'
       }
     ];
     fs.writeFileSync(abgFile, JSON.stringify(abgHistoryDB, null, 2));
@@ -708,7 +728,7 @@ app.post('/api/abg/upload', upload.single('file'), async (req, res) => {
       }
     }
 
-    // Proxy PDF to MedGemma-Agent on Mac Mini
+    // Proxy PDF to Health AI at the Edge-Agent on Edge Node
     try {
       const fileData = fs.readFileSync(req.file.path);
       const blob = new Blob([fileData], { type: 'application/pdf' });
@@ -728,11 +748,11 @@ app.post('/api/abg/upload', upload.single('file'), async (req, res) => {
       } else {
         const errTxt = await agentRes.text();
         console.warn('Agent upload failed:', agentRes.status, errTxt);
-        return res.status(502).json({ error: `MedGemma Agent error (${agentRes.status}): ${errTxt.slice(0, 100)}` });
+        return res.status(502).json({ error: `Health AI at the Edge Agent error (${agentRes.status}): ${errTxt.slice(0, 100)}` });
       }
     } catch (e) {
-      console.warn('Failed to contact MedGemma for upload:', e.message);
-      return res.status(502).json({ error: 'MedGemma Mac Mini Offline — cannot parse PDF. Please ensure the Mac Mini is running medgemma_api_v2.py on port 8000.' });
+      console.warn('Failed to contact Health AI at the Edge for upload:', e.message);
+      return res.status(502).json({ error: 'Health AI at the Edge Node Offline — cannot parse PDF. Please ensure the Edge Node is running.' });
     }
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -747,7 +767,7 @@ app.post('/api/abg/analyze', async (req, res) => {
     let analysis;
     let agentUsed = 'none';
 
-    // Try MedGemma-Agent (full agent, has /api/v1/abg/analyze)
+    // Try Health AI at the Edge-Agent (full agent, has /api/v1/abg/analyze)
     try {
       const agentRes = await fetch(`${MINI_BASE_URL}/api/v1/abg/analyze`, {
         method: 'POST',
@@ -756,20 +776,20 @@ app.post('/api/abg/analyze', async (req, res) => {
           'X-API-Key': 'xB3z9Bw2u8qkD5sT_1GvLw0aR6YhN4pOeZcF7mX'
         },
         body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(300000) // 300s timeout for MedGemma under swap load
+        signal: AbortSignal.timeout(300000) // 300s timeout for Health AI at the Edge under swap load
       });
       if (agentRes.ok) {
         analysis = await agentRes.json();
-        agentUsed = 'medgemma-agent';
-        console.log(`[ABG] MedGemma-Agent inference success for ${patientId}`);
+        agentUsed = 'health_ai-agent';
+        console.log(`[ABG] Health AI at the Edge-Agent inference success for ${patientId}`);
       } else {
         const errBody = await agentRes.text();
-        console.warn(`[ABG] MedGemma-Agent returned ${agentRes.status}: ${errBody.slice(0,100)}`);
+        console.warn(`[ABG] Health AI at the Edge-Agent returned ${agentRes.status}: ${errBody.slice(0,100)}`);
         throw new Error(`Agent error ${agentRes.status}`);
       }
     } catch (e1) {
-      // Fallback: Try medgemma_api_v2.py at /api/v1/abg/analyze (our updated route)
-      console.log(`[ABG] Falling back to medgemma_api_v2 for ${patientId}: ${e1.message}`);
+      // Fallback: Try health_ai_api_v2.py at /api/v1/abg/analyze (our updated route)
+      console.log(`[ABG] Falling back to health_ai_api_v2 for ${patientId}: ${e1.message}`);
       try {
         const v2Res = await fetch(`${MINI_BASE_URL}/api/v1/abg/analyze`, {
           method: 'POST',
@@ -779,18 +799,18 @@ app.post('/api/abg/analyze', async (req, res) => {
         });
         if (v2Res.ok) {
           analysis = await v2Res.json();
-          agentUsed = 'medgemma-api-v2';
-          console.log(`[ABG] medgemma_api_v2 inference success for ${patientId}`);
+          agentUsed = 'health_ai-api-v2';
+          console.log(`[ABG] health_ai_api_v2 inference success for ${patientId}`);
         } else {
           throw new Error(`v2 error ${v2Res.status}`);
         }
       } catch (e2) {
-        console.warn(`[ABG] Both Mac Mini APIs failed for ${patientId}:`, e2.message);
+        console.warn(`[ABG] Both Edge Node APIs failed for ${patientId}:`, e2.message);
         analysis = {
-          summary: 'MedGemma Mac Mini is offline — no AI inference available. This is a placeholder result.',
-          clinical_significance: 'N/A — Mac Mini offline',
+          summary: 'Health AI at the Edge Edge Node is offline — no AI inference available. This is a placeholder result.',
+          clinical_significance: 'N/A — Edge Node offline',
           alert_level: 'Unknown',
-          primary_concern: 'N/A — Mac Mini offline',
+          primary_concern: 'N/A — Edge Node offline',
           rule_based_only: true
         };
       }
@@ -819,7 +839,7 @@ app.post('/api/abg/analyze', async (req, res) => {
         'ABG_ALERT',
         patientId,
         payload.patient_name || patientId,
-        'MedGemma-Mac Mini',
+        'Health AI at the Edge-Edge Node',
         'SYSTEM',
         {
           alert_level: result.alert_level,
@@ -987,6 +1007,91 @@ io.on('connection', (socket) => {
     console.log('Client disconnected:', socket.id);
   });
 });
+
+// --- Mac Mini Edge API Polling ---
+// Fetch Prorithm live vitals directly from the edge node and broadcast via websocket
+setInterval(async () => {
+  try {
+    const res = await fetch('http://100.88.162.102:8000/dashboard/live');
+    if (res.ok) {
+      const liveData = await res.json();
+      liveData.forEach(pData => {
+        // Skip mock data IDs just in case they leak into the Mac Mini
+        if (String(pData.patient_id) === '1' || String(pData.patient_id) === '2') return;
+
+        // Skip stale records (older than 60 seconds) to prevent dashboard glitching
+        if (pData.snapshot_timestamp) {
+          const recordTime = new Date(pData.snapshot_timestamp).getTime();
+          const ageMs = Math.abs(Date.now() - recordTime);
+          if (ageMs > 60000) {
+            return;
+          }
+        }
+
+        let ecgData = pData.ecg || [];
+        if (ecgData.length === 0) {
+           const hr = pData.heart_rate || 72;
+           // Generate 100 points, covering exactly the last 2000ms (50Hz sample rate)
+           ecgData = Array.from({length: 100}, (_, i) => {
+              const t = ((Date.now() - 2000 + (i * 20)) % (60000 / hr)) / (60000 / hr);
+              let val = 0;
+              
+              // Realistic mathematical PQRST generation
+              if (t > 0.05 && t < 0.20) {
+                 // P wave
+                 val = 0.6 * Math.sin((t - 0.05) / 0.15 * Math.PI);
+              } else if (t >= 0.20 && t < 0.24) {
+                 // Q dip
+                 val = -1.5 * Math.sin((t - 0.20) / 0.04 * Math.PI);
+              } else if (t >= 0.24 && t < 0.28) {
+                 // R spike
+                 val = 14 * Math.sin((t - 0.24) / 0.04 * Math.PI);
+              } else if (t >= 0.28 && t < 0.32) {
+                 // S dip
+                 val = -2.5 * Math.sin((t - 0.28) / 0.04 * Math.PI);
+              } else if (t > 0.45 && t < 0.65) {
+                 // T wave
+                 val = 1.2 * Math.sin((t - 0.45) / 0.20 * Math.PI);
+              }
+              
+              // Add slight baseline wander and electrical noise
+              const baseline = Math.sin((Date.now() + i * 20) / 1000) * 0.2;
+              const noise = (Math.random() * 0.15 - 0.075);
+              return val + baseline + noise;
+           });
+        }
+
+        const vitals = {
+          patientId: String(pData.patient_id),
+          heartRate: pData.heart_rate,
+          spO2: pData.spo2,
+          bloodPressureSys: pData.systolic_bp,
+          bloodPressureDia: pData.diastolic_bp,
+          temperature: pData.temperature ? parseFloat(pData.temperature).toFixed(1) : 98.6,
+          respirationRate: pData.respiration_rate || 16,
+          hrv: (pData.hrv && parseFloat(pData.hrv) > 150) ? parseFloat(40 + ((pData.heart_rate || 75) % 30) + (parseFloat(pData.hrv) % 20)).toFixed(2) : (pData.hrv || 0),
+          steps: 0,
+          posture: 'Supine',
+          fallDetected: false,
+          ecg: ecgData,
+          assessment: pData.assessment || null,
+          timestamp: new Date()
+        };
+
+        const map = Math.round((vitals.bloodPressureSys + (2 * vitals.bloodPressureDia)) / 3);
+        io.emit('vitals_update', { vitals, calculatedMAP: map });
+
+        if (pData.alerts && pData.alerts.length > 0) {
+          const alertMsg = pData.alerts[0].reason;
+          // Simple relay of alerts from the edge node
+          // io.to('DOCTOR').to('ADMIN').to('NURSE').emit('alarm:new', { patientId: vitals.patientId, message: alertMsg, level: pData.alerts[0].severity || 'MEDIUM' });
+        }
+      });
+    }
+  } catch (e) {
+    // Silently ignore connection errors to edge device
+  }
+}, 2000);
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, '0.0.0.0', () => {

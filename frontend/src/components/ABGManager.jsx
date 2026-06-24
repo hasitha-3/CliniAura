@@ -72,7 +72,7 @@ const ABGManager = ({ patientId, patientName }) => {
     setIsAnalyzing(true);
     setError(null);
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 300000); // 5 min timeout for MedGemma on Mini
+    const timeout = setTimeout(() => controller.abort(), 300000); // 5 min timeout for Health AI at the Edge on Mini
     try {
       const fields = uploadResult.extracted_fields || {};
       const payload = {
@@ -100,7 +100,7 @@ const ABGManager = ({ patientId, patientName }) => {
       fetchHistory();
     } catch (err) {
       if (err.name === 'AbortError') {
-        setError('MedGemma inference timed out (5 min). The Mac Mini may be under heavy load — please try again.');
+        setError('Health AI at the Edge inference timed out (5 min). The Edge Node may be under heavy load — please try again.');
       } else {
         setError(err.message);
       }
@@ -164,7 +164,7 @@ const ABGManager = ({ patientId, patientName }) => {
     printWindow.document.close();
   };
 
-  const printMedGemmaReport = (reportData) => {
+  const printCliniAuraReport = (reportData) => {
     // Accept data from param (history item) or fall back to current analysisResult
     const d = reportData || analysisResult;
     if (!d) { setError('No analysis data available to download.'); return; }
@@ -174,7 +174,7 @@ const ABGManager = ({ patientId, patientName }) => {
     printWindow.document.write(`
       <html>
         <head>
-          <title>MedGemma ABG Report - ${patientName}</title>
+          <title>Health AI at the Edge ABG Report - ${patientName}</title>
           <style>
             body { font-family: 'Arial', sans-serif; padding: 30px; line-height: 1.7; color: #222; }
             h1 { color: #1a3a5c; border-bottom: 2px solid #1a3a5c; padding-bottom: 10px; }
@@ -187,7 +187,7 @@ const ABGManager = ({ patientId, patientName }) => {
           </style>
         </head>
         <body>
-          <h1>MedGemma ABG Analysis Report</h1>
+          <h1>Health AI at the Edge ABG Analysis Report</h1>
           <div class="section">
             <div><span class="label">Patient ID:</span> ${d.patient_id || patientId}</div>
             <div><span class="label">Patient Name:</span> ${patientName}</div>
@@ -201,7 +201,7 @@ const ABGManager = ({ patientId, patientName }) => {
             <p>${d.summary || 'No summary available.'}</p>
           </div>
           <div class="section">
-            <h2>AI Insights (MedGemma via Mac Mini)</h2>
+            <h2>AI Insights (Health AI at the Edge via Edge Node)</h2>
             <div><span class="label">Clinical Significance:</span> ${d.clinical_significance || 'N/A'}</div>
             <div><span class="label">Primary Concern:</span> ${d.primary_concern || 'N/A'}</div>
             ${d.contributing_factors ? `<div><span class="label">Contributing Factors:</span> ${Array.isArray(d.contributing_factors) ? d.contributing_factors.join(', ') : d.contributing_factors}</div>` : ''}
@@ -219,9 +219,9 @@ const ABGManager = ({ patientId, patientName }) => {
             <div><span class="label">Na+:</span> ${fields.na ?? d.na ?? 'N/A'} mEq/L</div>
             <div><span class="label">Cl-:</span> ${fields.cl ?? d.cl ?? 'N/A'} mEq/L</div>
           </div>
-          ${d.rule_based_only ? '<p style="color:#92400e; font-size:0.85rem;">⚠ Note: MedGemma inference unavailable — results are rule-based only.</p>' : ''}
+          ${d.rule_based_only ? '<p style="color:#92400e; font-size:0.85rem;">⚠ Note: Health AI at the Edge inference unavailable — results are rule-based only.</p>' : ''}
           <div class="footer">
-            CliniAura MedGemma ABG Report — AI-assisted clinical decision support only. Not a substitute for professional clinical judgment.
+            CliniAura Health AI at the Edge ABG Report — AI-assisted clinical decision support only. Not a substitute for professional clinical judgment.
           </div>
           <script>window.print(); window.close();</script>
         </body>
@@ -234,7 +234,7 @@ const ABGManager = ({ patientId, patientName }) => {
     <div style={{ background: 'var(--surface2)', padding: '16px', borderRadius: '8px', border: '1px solid var(--border)', marginTop: '8px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', color: 'var(--teal)' }}>
         <Activity size={18} />
-        <h3 style={{ margin: 0, fontSize: '1rem' }}>ABG Analyzer (MedGemma via Mac Mini)</h3>
+        <h3 style={{ margin: 0, fontSize: '1rem' }}>ABG Analyzer (Health AI at the Edge via Edge Node)</h3>
       </div>
 
       {error && (
@@ -296,7 +296,7 @@ const ABGManager = ({ patientId, patientName }) => {
               style={{ flex: 1, padding: '8px 12px', background: 'rgba(56, 189, 248, 0.2)', color: 'var(--cyan)', border: '1px solid var(--cyan)', borderRadius: '6px', cursor: isAnalyzing ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '0.85rem' }}
             >
               {isAnalyzing ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Activity size={14} />}
-              {isAnalyzing ? 'Running MedGemma (up to 30s)...' : 'Run MedGemma Analysis'}
+              {isAnalyzing ? 'Running Health AI at the Edge (up to 30s)...' : 'Run Health AI at the Edge Analysis'}
             </button>
             <button
               onClick={() => printLabResults(uploadResult)}
@@ -333,7 +333,7 @@ const ABGManager = ({ patientId, patientName }) => {
             )}
             {analysisResult.rule_based_only && (
               <p style={{ margin: '0 0 12px 0', fontSize: '0.75rem', color: '#f59e0b', background: 'rgba(245,158,11,0.1)', padding: '6px', borderRadius: '4px' }}>
-                ⚠ MedGemma inference unavailable — results are rule-based only.
+                ⚠ Health AI at the Edge inference unavailable — results are rule-based only.
               </p>
             )}
 
@@ -351,7 +351,7 @@ const ABGManager = ({ patientId, patientName }) => {
                 <Download size={12} /> Download Lab
               </button>
               <button
-                onClick={() => printMedGemmaReport(analysisResult)}
+                onClick={() => printCliniAuraReport(analysisResult)}
                 style={{ flex: 1, padding: '6px', background: 'var(--teal)', border: 'none', color: '#fff', borderRadius: '4px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', cursor: 'pointer' }}
               >
                 <Download size={12} /> Download Report
@@ -400,7 +400,7 @@ const ABGManager = ({ patientId, patientName }) => {
                     <Download size={10} /> Download Lab
                   </button>
                   <button
-                    onClick={() => printMedGemmaReport(item)}
+                    onClick={() => printCliniAuraReport(item)}
                     style={{ background: 'var(--teal)', color: '#fff', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
                     <Download size={10} /> Download Report
                   </button>
@@ -418,14 +418,14 @@ const ABGManager = ({ patientId, patientName }) => {
             <div style={{ padding: '16px 20px', background: '#1e293b', borderBottom: '1px solid #334155', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3 style={{ margin: 0, color: '#f8fafc', fontSize: '1rem' }}>ABG Analysis Report — {patientName}</h3>
               <div style={{ display: 'flex', gap: '8px' }}>
-                <button onClick={() => printMedGemmaReport(pdfViewData)} style={{ background: '#0d9488', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <button onClick={() => printCliniAuraReport(pdfViewData)} style={{ background: '#0d9488', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <Download size={12} /> Download
                 </button>
                 <button onClick={() => setPdfViewData(null)} style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>Close</button>
               </div>
             </div>
             <div style={{ padding: '40px', overflowY: 'auto', flex: 1, color: '#1e293b', fontFamily: 'Arial, sans-serif', lineHeight: '1.7' }}>
-              <h1 style={{ borderBottom: '2px solid #1e293b', paddingBottom: '12px', marginTop: 0, color: '#1a3a5c' }}>MedGemma ABG Analysis Report</h1>
+              <h1 style={{ borderBottom: '2px solid #1e293b', paddingBottom: '12px', marginTop: 0, color: '#1a3a5c' }}>Health AI at the Edge ABG Analysis Report</h1>
               <div style={{ marginBottom: '20px', background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                 <div><strong>Patient ID:</strong> {pdfViewData.patient_id || patientId}</div>
                 <div><strong>Patient Name:</strong> {patientName}</div>
@@ -456,7 +456,7 @@ const ABGManager = ({ patientId, patientName }) => {
               </div>
 
               <div style={{ marginBottom: '20px', background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                <h2 style={{ color: '#2563eb', fontSize: '1rem', marginTop: 0 }}>AI Insights (MedGemma via Mac Mini)</h2>
+                <h2 style={{ color: '#2563eb', fontSize: '1rem', marginTop: 0 }}>AI Insights (Health AI at the Edge via Edge Node)</h2>
                 <div style={{ marginBottom: '8px' }}><strong>Clinical Significance:</strong> {pdfViewData.clinical_significance || 'N/A'}</div>
                 <div style={{ marginBottom: '8px' }}><strong>Primary Concern:</strong> {pdfViewData.primary_concern || 'N/A'}</div>
                 {pdfViewData.contributing_factors && (
@@ -471,12 +471,12 @@ const ABGManager = ({ patientId, patientName }) => {
 
               {pdfViewData.rule_based_only && (
                 <p style={{ color: '#92400e', fontSize: '0.85rem', background: '#fef3c7', padding: '8px', borderRadius: '6px', border: '1px solid #fbbf24' }}>
-                  ⚠ Note: MedGemma inference was unavailable at time of analysis. Results shown are rule-based only.
+                  ⚠ Note: Health AI at the Edge inference was unavailable at time of analysis. Results shown are rule-based only.
                 </p>
               )}
 
               <p style={{ marginTop: '30px', fontSize: '0.75rem', color: '#64748b', borderTop: '1px solid #e2e8f0', paddingTop: '12px' }}>
-                CliniAura MedGemma ABG Report — AI-assisted clinical decision support only. Not a substitute for professional clinical judgment.
+                CliniAura Health AI at the Edge ABG Report — AI-assisted clinical decision support only. Not a substitute for professional clinical judgment.
               </p>
             </div>
           </div>

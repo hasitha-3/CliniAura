@@ -176,7 +176,10 @@ const AlertHistory = () => {
           </div>
         );
       default:
-        return <div>{JSON.stringify(details)}</div>;
+        if (details && typeof details === 'object' && details.message) {
+          return <div>{details.message}</div>;
+        }
+        return <div>{typeof details === 'string' ? details : JSON.stringify(details)}</div>;
     }
   };
 

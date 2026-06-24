@@ -1,11 +1,44 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import '../index.css';
 
 const HomePage = () => {
   const navigate = useNavigate();
+  const [vitalsData, setVitalsData] = useState(null);
 
   useEffect(() => {
+    const storedUser = localStorage.getItem('cliniaura_user');
+    const user = storedUser ? JSON.parse(storedUser) : null;
+    
+    if (user && user.role === 'PATIENT') {
+      const fetchLive = async () => {
+        try {
+          const res = await fetch('http://100.88.162.102:8000/dashboard/live');
+          if (!res.ok) return;
+          const data = await res.json();
+          // Assuming user.patientId corresponds to the edge node ID, else fallback to 1049
+          const pId = user.patientId || '1049'; 
+          const myData = data.find(d => String(d.patient_id) === String(pId));
+          if (myData) {
+            setVitalsData({
+              heartRate: myData.heart_rate,
+              spO2: myData.spo2,
+              bloodPressureSys: myData.systolic_bp,
+              bloodPressureDia: myData.diastolic_bp,
+              temperature: myData.temperature ? parseFloat(myData.temperature).toFixed(1) : 98.6
+            });
+          }
+        } catch (e) { }
+      };
+      const intId = setInterval(fetchLive, 2000);
+      return () => clearInterval(intId);
+    }
+  }, []);
+
+  useEffect(() => {
+    const storedUser = localStorage.getItem('cliniaura_user');
+    const user = storedUser ? JSON.parse(storedUser) : null;
+    
     const observer = new IntersectionObserver((entries) => {
       entries.forEach((entry, i) => {
         if (entry.isIntersecting) {
@@ -53,37 +86,44 @@ const HomePage = () => {
           </div>
         </div>
 
-        {/* Floating monitor card (decorative) */}
-        <div className="hero-visual">
-          <div className="monitor-card">
-            <div className="monitor-card-header">
-              <span>Patient Vitals</span>
-              <div className="live">LIVE</div>
+        {/* Floating monitor card (decorative / live data) */}
+        {(() => {
+          const storedUser = localStorage.getItem('cliniaura_user');
+          const user = storedUser ? JSON.parse(storedUser) : null;
+          return (!user || user?.role === 'PATIENT') && (
+            <div className="hero-visual">
+              <div className="monitor-card">
+                <div className="monitor-card-header">
+                  <span>Patient Vitals</span>
+                  <div className="live">LIVE</div>
+                </div>
+                <div className="vitals-grid">
+                  <div className="vital-item vital-hr">
+                    <div className="vital-label">Heart Rate</div>
+                    <div className="vital-value">{vitalsData?.heartRate || '-'}<span className="vital-unit">bpm</span></div>
+                  </div>
+                  <div className="vital-item vital-spo2">
+                    <div className="vital-label">SpO2</div>
+                    <div className="vital-value">{vitalsData?.spO2 || '-'}<span className="vital-unit">%</span></div>
+                  </div>
+                  <div className="vital-item vital-bp">
+                    <div className="vital-label">Blood Pressure</div>
+                    <div className="vital-value">{vitalsData ? `${vitalsData.bloodPressureSys}/${vitalsData.bloodPressureDia}` : '-/-'}</div>
+                  </div>
+                  <div className="vital-item vital-temp">
+                    <div className="vital-label">Temperature</div>
+                    <div className="vital-value">{vitalsData?.temperature || '-'} <span className="vital-unit">°F</span></div>
+                  </div>
+                </div>
+                <div className="ai-alert">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#00d4aa" strokeWidth="1.5"><path d="M8 1v6M8 11h.01"/><circle cx="8" cy="8" r="7"/></svg>
+                  <div className="ai-alert-text"><strong>AI Insight:</strong> {(vitalsData?.heartRate > 100) ? 'Elevated heart rate detected. Monitoring closely.' : 'Hemodynamic trend stable. No intervention predicted.'}</div>
+                </div>
+              </div>
             </div>
-            <div className="vitals-grid">
-              <div className="vital-item vital-hr">
-                <div className="vital-label">Heart Rate</div>
-                <div className="vital-value">- <span className="vital-unit">bpm</span></div>
-              </div>
-              <div className="vital-item vital-spo2">
-                <div className="vital-label">SpO2</div>
-                <div className="vital-value">- <span className="vital-unit">%</span></div>
-              </div>
-              <div className="vital-item vital-bp">
-                <div className="vital-label">Blood Pressure</div>
-                <div className="vital-value">-<span className="vital-unit">/-</span></div>
-              </div>
-              <div className="vital-item vital-temp">
-                <div className="vital-label">Temperature</div>
-                <div className="vital-value">- <span className="vital-unit">°C</span></div>
-              </div>
-            </div>
-            <div className="ai-alert">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#00d4aa" strokeWidth="1.5"><path d="M8 1v6M8 11h.01"/><circle cx="8" cy="8" r="7"/></svg>
-              <div className="ai-alert-text"><strong>AI Insight:</strong> Hemodynamic trend stable. No intervention predicted in the next 2 hours.</div>
-            </div>
-          </div>
-        </div>
+          );
+        })()}
+
       </section>
 
       {/* PROBLEM */}
