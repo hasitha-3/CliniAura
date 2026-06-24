@@ -241,7 +241,8 @@ const SettingsPage = () => {
   // Fetch Health AI at the Edge Health Status
   useEffect(() => {
     if (user?.role === 'DOCTOR' || user?.role === 'ADMIN' || user?.role === 'NURSE') {
-      fetch('http://100.88.162.102:8000/health')
+      const API_URL = import.meta.env.VITE_BACKEND_URL || `${window.location.protocol}//${window.location.hostname}:5000`;
+      fetch(`${API_URL}/api/mini/health`)
         .then(res => res.json())
         .then(data => setHealth(data))
         .catch(() => setHealth({ status: 'unreachable' }));

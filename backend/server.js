@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
@@ -466,9 +467,9 @@ app.post('/api/v1/vitals/snapshot', async (req, res) => {
 
     // Call Health AI at the Edge Agent
     try {
-      const gemmaRes = await fetch('http://127.0.0.1:8000/api/v1/vitals/snapshot', {
+      const gemmaRes = await fetch(`${MINI_BASE_URL}/api/v1/vitals/snapshot`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-API-Key': 'dev-key-123', 'Authorization': 'Bearer clinician_token' },
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': process.env.API_KEYS_ADMIN || 'xB3z9Bw2u8qkD5sT_1GvLw0aR6YhN4pOeZcF7mX', 'Authorization': 'Bearer clinician_token' },
         body: JSON.stringify(data)
       });
       if (gemmaRes.ok) {
@@ -616,10 +617,10 @@ app.post('/api/ehr/upload', upload.single('file'), async (req, res) => {
       formData.append('file', blob, req.file.originalname);
 
       // We extract API Key if sent by frontend, otherwise use the Edge Node Health AI at the Edge Admin Key
-      const apiKey = req.headers['x-api-key'] || 'xB3z9Bw2u8qkD5sT_1GvLw0aR6YhN4pOeZcF7mX';
+      const apiKey = req.headers['x-api-key'] || process.env.API_KEYS_ADMIN || 'xB3z9Bw2u8qkD5sT_1GvLw0aR6YhN4pOeZcF7mX';
       const token = req.headers.authorization ? req.headers.authorization.split(' ')[1] : 'clinician_token';
 
-      const agentRes = await fetch('http://100.88.162.102:8000/api/v1/ehr/ingest', {
+      const agentRes = await fetch(`${MINI_BASE_URL}/api/v1/ehr/ingest`, {
         method: 'POST',
         headers: {
           'X-API-Key': apiKey,
@@ -737,7 +738,7 @@ app.post('/api/abg/upload', upload.single('file'), async (req, res) => {
 
       const agentRes = await fetch(`${MINI_BASE_URL}/api/v1/abg/upload`, {
         method: 'POST',
-        headers: { 'X-API-Key': 'xB3z9Bw2u8qkD5sT_1GvLw0aR6YhN4pOeZcF7mX' },
+        headers: { 'X-API-Key': process.env.API_KEYS_ADMIN || 'xB3z9Bw2u8qkD5sT_1GvLw0aR6YhN4pOeZcF7mX' },
         body: formData,
         signal: AbortSignal.timeout(45000)
       });
@@ -773,7 +774,7 @@ app.post('/api/abg/analyze', async (req, res) => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-API-Key': 'xB3z9Bw2u8qkD5sT_1GvLw0aR6YhN4pOeZcF7mX'
+          'X-API-Key': process.env.API_KEYS_ADMIN || 'xB3z9Bw2u8qkD5sT_1GvLw0aR6YhN4pOeZcF7mX'
         },
         body: JSON.stringify(payload),
         signal: AbortSignal.timeout(300000) // 300s timeout for Health AI at the Edge under swap load
@@ -1012,7 +1013,7 @@ io.on('connection', (socket) => {
 // Fetch Prorithm live vitals directly from the edge node and broadcast via websocket
 setInterval(async () => {
   try {
-    const res = await fetch('http://100.88.162.102:8000/dashboard/live');
+    const res = await fetch(`${MINI_BASE_URL}/dashboard/live`);
     if (res.ok) {
       const liveData = await res.json();
       liveData.forEach(pData => {

@@ -13,7 +13,8 @@ const HomePage = () => {
     if (user && user.role === 'PATIENT') {
       const fetchLive = async () => {
         try {
-          const res = await fetch('http://100.88.162.102:8000/dashboard/live');
+          const API_URL = import.meta.env.VITE_BACKEND_URL || `${window.location.protocol}//${window.location.hostname}:5000`;
+          const res = await fetch(`${API_URL}/api/mini/dashboard/live`);
           if (!res.ok) return;
           const data = await res.json();
           // Assuming user.patientId corresponds to the edge node ID, else fallback to 1049
