@@ -11,6 +11,21 @@ const useWardStore = create((set, get) => ({
     
     if (bedIndex >= 0) {
       const existing = newBeds[bedIndex];
+
+      // Skip re-render if vitals values haven't changed (prevents glitch from identical polls)
+      if (vitals && existing.latestVitals && !alertMsg) {
+        const prev = existing.latestVitals;
+        if (
+          prev.heartRate === vitals.heartRate &&
+          prev.spO2 === vitals.spO2 &&
+          prev.bloodPressureSys === vitals.bloodPressureSys &&
+          prev.bloodPressureDia === vitals.bloodPressureDia &&
+          prev.respirationRate === vitals.respirationRate
+        ) {
+          return state; // Nothing changed — skip re-render entirely
+        }
+      }
+
       const newHistory = vitals ? [...(existing.history || []), vitals].slice(-120) : existing.history || [];
       const latest = vitals ? vitals : existing.latestVitals;
       newBeds[bedIndex] = { ...existing, latestVitals: latest, history: newHistory };
@@ -25,8 +40,6 @@ const useWardStore = create((set, get) => ({
     // 2. Add to Alert Queue if present
     let newAlerts = [...state.alerts];
     if (alertMsg) {
-      // Check if this exact alert message already exists (whether acknowledged or not)
-      // to prevent it from continuously popping up after acknowledgement
       const exists = newAlerts.find(a => a.patientId === patientId && a.message === alertMsg);
       if (!exists) {
         newAlerts.push({
@@ -35,7 +48,7 @@ const useWardStore = create((set, get) => ({
           message: alertMsg,
           timestamp: new Date(),
           acknowledged: false,
-          priorityScore: 10 // Mock priority
+          priorityScore: 10
         });
       }
     }

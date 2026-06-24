@@ -55,18 +55,21 @@ const CommandCentre = () => {
 
     const socket = io(API_URL, { auth: { token, role: user?.role } });
     
-    const EDGE_ID_MAP = {
-      '428': ['patient3', 'testpatient3', '3'],
-      '1736': ['patient3', 'testpatient3', '3'],
-      '1049': ['patient3', 'testpatient3', '3'],
-      '1051': ['patient4', 'testpatient4', '4'],
+    // Map edge device patient IDs → canonical MongoDB _id (ONE update per event, no glitch)
+    const EDGE_TO_DB_ID = {
+      '428':  '3',   // testpatient3
+      '1736': '3',
+      '1049': '3',
+      '1051': '4',   // testpatient4
+      '1734': '4',
+      '1050': '4',
     };
 
     socket.on('vitals_update', (data) => {
       if (data?.vitals) {
-        const mappedUsernames = EDGE_ID_MAP[String(data.vitals.patientId)];
-        if (mappedUsernames && mappedUsernames.length > 0) {
-          mappedUsernames.forEach(mappedId => updateVitals(mappedId, data.vitals, null));
+        const dbId = EDGE_TO_DB_ID[String(data.vitals.patientId)];
+        if (dbId) {
+          updateVitals(dbId, data.vitals, null);
         }
       }
     });
