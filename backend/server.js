@@ -1,21 +1,28 @@
-﻿require('dotenv').config();
+require('dotenv').config();
 
 // --- Tailscale SOCKS5 Proxy Setup ---
-// When deployed on Render with Tailscale, start.sh sets ALL_PROXY=socks5://127.0.0.1:1055
-// We use socks-proxy-agent so fetch() calls to 100.x.x.x Tailscale IPs are routed correctly.
-let edgeFetchOptions = {};
-const socksProxy = process.env.ALL_PROXY || process.env.HTTPS_PROXY;
-if (socksProxy && socksProxy.startsWith('socks')) {
-  const { SocksProxyAgent } = require('socks-proxy-agent');
-  const agent = new SocksProxyAgent(socksProxy);
-  edgeFetchOptions = { agent };
-  console.log(`[Tailscale] SOCKS5 proxy active: ${socksProxy}`);
+// Node.js native fetch (undici) does NOT support SOCKS5 proxies.
+// It either ignores the 'agent' option entirely, or (if ALL_PROXY/HTTPS_PROXY is set)
+// tries to use it as an HTTP CONNECT proxy → "incompatible SOCKS version" error.
+//
+// Solution: use node-fetch v2 (CJS) + socks-proxy-agent for all Edge Node calls.
+// start.sh sets EDGE_SOCKS5=socks5://127.0.0.1:1055 (NOT ALL_PROXY/HTTPS_PROXY)
+// so native fetch doesn't intercept it.
+
+const nodeFetch = require('node-fetch');
+const { SocksProxyAgent } = require('socks-proxy-agent');
+
+let edgeFetch;
+const socksDSN = process.env.EDGE_SOCKS5;
+if (socksDSN) {
+  const socksAgent = new SocksProxyAgent(socksDSN);
+  console.log(`[Tailscale] SOCKS5 active via node-fetch: ${socksDSN}`);
+  edgeFetch = (url, options = {}) => nodeFetch(url, { ...options, agent: socksAgent });
+} else {
+  // Local dev: no proxy, use plain node-fetch
+  edgeFetch = (url, options = {}) => nodeFetch(url, options);
 }
 
-// Wrapper: use proxy agent only for Edge Node requests (100.x.x.x Tailscale IPs)
-const edgeFetch = (url, options = {}) => {
-  return fetch(url, { ...options, ...edgeFetchOptions });
-};
 
 const express = require('express');
 const http = require('http');
