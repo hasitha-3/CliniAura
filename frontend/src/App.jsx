@@ -240,7 +240,7 @@ const SettingsPage = () => {
 
   // Fetch Health AI at the Edge Health Status
   useEffect(() => {
-    if (user?.role === 'DOCTOR' || user?.role === 'ADMIN') {
+    if (user?.role === 'DOCTOR' || user?.role === 'ADMIN' || user?.role === 'NURSE') {
       fetch('http://100.88.162.102:8000/health')
         .then(res => res.json())
         .then(data => setHealth(data))
