@@ -986,7 +986,7 @@ const AdminDashboard = () => {
 
 const DoctorDashboard = () => {
   const { user } = useContext(AuthContext);
-  const { activeAlerts, updateVitals, acknowledgeAlert } = useWardStore();
+  const { activeAlerts, updateVitals, acknowledgeAlert, clearAlertsForPatient } = useWardStore();
   const [patients, setPatients] = useState([]);
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [expandedPatientId, setExpandedPatientId] = useState(null);
@@ -1090,10 +1090,24 @@ const DoctorDashboard = () => {
       }
     });
 
+    // Receive resolution events → clear alerts
+    newSocket.on('alarm:resolved', (data) => {
+      const pid = String(data.patientId);
+      const LEGACY_MAP = { '428': '3', '1736': '3', '1049': '3', '1051': '4', '1734': '4', '1050': '4' };
+      const resolvedId = LEGACY_MAP[pid] || pid;
+      
+      clearAlertsForPatient(resolvedId);
+
+      const currentSel = selectedPatientRef.current;
+      if (currentSel && resolvedId === String(currentSel._id)) {
+        setAlert(null);
+      }
+    });
+
     return () => {
       newSocket.close();
     };
-  }, []);
+  }, [clearAlertsForPatient]);
 
   useEffect(() => {
     if (selectedPatient && socket) {

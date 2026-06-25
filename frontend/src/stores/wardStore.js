@@ -40,21 +40,24 @@ const useWardStore = create((set, get) => ({
     // 2. Add to Alert Queue if present
     let newAlerts = [...state.alerts];
     if (alertMsg) {
-      const exists = newAlerts.find(a => a.patientId === patientId && a.message === alertMsg);
-      if (!exists) {
-        newAlerts.push({
-          id: Date.now().toString(),
-          patientId,
-          message: alertMsg,
-          timestamp: new Date(),
-          acknowledged: false,
-          priorityScore: 10
-        });
-      }
+      // Remove any existing identical alert for this patient to prevent duplicates
+      newAlerts = newAlerts.filter(a => !(a.patientId === patientId && a.message === alertMsg));
+      newAlerts.push({
+        id: Date.now().toString(),
+        patientId,
+        message: alertMsg,
+        timestamp: new Date(),
+        acknowledged: false,
+        priorityScore: 10
+      });
     }
 
     return { beds: newBeds, alerts: newAlerts };
   }),
+
+  clearAlertsForPatient: (patientId) => set((state) => ({
+    alerts: state.alerts.map(a => a.patientId === patientId ? { ...a, acknowledged: true } : a)
+  })),
 
   acknowledgeAlert: (alertId) => set((state) => {
     return {

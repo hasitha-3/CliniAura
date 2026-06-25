@@ -9,7 +9,7 @@ import CareSchedule from '../components/CareSchedule';
 import PatientCalls from '../components/PatientCalls';
 
 const CommandCentre = () => {
-  const { beds, getActiveAlerts, updateVitals, acknowledgeAlert } = useWardStore();
+  const { beds, getActiveAlerts, updateVitals, acknowledgeAlert, clearAlertsForPatient } = useWardStore();
   const [patients, setPatients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -82,6 +82,15 @@ const CommandCentre = () => {
         updateVitals(dbId, null, data.message);
       }
     });
+    
+    // Receive resolution events → clear alerts from Escalation Desk
+    socket.on('alarm:resolved', (data) => {
+      if (data?.patientId) {
+        const pid = String(data.patientId);
+        const dbId = EDGE_TO_DB_ID[pid] || pid;
+        clearAlertsForPatient(dbId);
+      }
+    });
 
     return () => {
       socket.close();
@@ -89,7 +98,7 @@ const CommandCentre = () => {
         clearInterval(window.dummyIntervalId);
       }
     };
-  }, [updateVitals]);
+  }, [updateVitals, clearAlertsForPatient]);
 
   const activeAlerts = getActiveAlerts();
 

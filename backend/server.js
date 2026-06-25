@@ -10,6 +10,7 @@ require('dotenv').config();
 // so native fetch doesn't intercept it.
 
 const nodeFetch = require('node-fetch');
+const FormDataNode = require('form-data'); // node-fetch v2 compatible multipart
 const { SocksProxyAgent } = require('socks-proxy-agent');
 
 let edgeFetch;
@@ -88,12 +89,12 @@ const initializeSeedData = () => {
     {
       _id: '3', patientId: '1049', username: 'testpatient3', password: patientPass, role: 'PATIENT', name: 'Mahima Kopalley', email: 'testpatient3@cliniaura.test', age: 21, gender: 'Female', primaryDiagnosis: 'Wearable Integration Test',
       riskScore: 'Low', activeProtocol: 'Edge Monitoring', targetMAP: 70, baselineCO: 5.0, baselineSV: 70,
-      ward: 'Cardiology', assignedNurse: 'testnurse1', assignedDoctor: 'testdoctor1', admissionDate: '2026-06-23T10:00:00Z', diagnosisDate: '2026-06-23T10:15:00Z', deviceType: 'IoT Edge DF45516', batteryLevel: 100, signalQualityIndex: 100, auditLogs: []
+      ward: 'Cardiology', assignedNurse: 'testnurse1', assignedDoctor: 'testdoctor1', admissionDate: '2026-06-23T10:00:00Z', diagnosisDate: '2026-06-23T10:15:00Z', deviceType: 'IoT Edge Device', batteryLevel: 100, signalQualityIndex: 100, auditLogs: []
     },
     {
       _id: '4', patientId: '1051', username: 'testpatient4', password: patientPass, role: 'PATIENT', name: 'Sirisha ABNP', email: 'testpatient4@cliniaura.test', age: 30, gender: 'Female', primaryDiagnosis: 'Wearable Integration Test 2',
       riskScore: 'Low', activeProtocol: 'Edge Monitoring', targetMAP: 70, baselineCO: 5.0, baselineSV: 70,
-      ward: 'Cardiology', assignedNurse: 'testnurse2', assignedDoctor: 'testdoctor2', admissionDate: '2026-06-23T10:00:00Z', diagnosisDate: '2026-06-23T10:15:00Z', deviceType: 'IoT Edge DF45517', batteryLevel: 100, signalQualityIndex: 100, auditLogs: []
+      ward: 'Cardiology', assignedNurse: 'testnurse2', assignedDoctor: 'testdoctor2', admissionDate: '2026-06-23T10:00:00Z', diagnosisDate: '2026-06-23T10:15:00Z', deviceType: 'IoT Edge Device', batteryLevel: 100, signalQualityIndex: 100, auditLogs: []
     },
     { _id: '6', username: 'testdoctor1', password: doctorPass, role: 'DOCTOR', name: 'Dr. Sarah Chen', specialty: 'Cardiology', shift: 'Morning' },
     { _id: '7', username: 'testdoctor2', password: doctorPass, role: 'DOCTOR', name: 'Dr. Marcus Webb', specialty: 'Pulmonology', shift: 'Night' },
@@ -566,7 +567,9 @@ app.post('/api/v1/vitals/snapshot', async (req, res) => {
                  }
                );
            }
-        }
+         } else {
+            io.emit('alarm:resolved', { patientId: vitals.patientId });
+         }
       }
     } catch (agentErr) {
       console.warn('Health AI at the Edge agent unreachable, skipping AI analysis. Falling back to rule-based escalation.', agentErr.message);
@@ -630,24 +633,23 @@ app.post('/api/ehr/upload', upload.single('file'), async (req, res) => {
 
     // Proxy the request to Health AI at the Edge
     try {
-      const formData = new FormData();
+      // Use form-data package (node-fetch v2 compatible — native Blob/FormData won't work)
+      const formData = new FormDataNode();
       formData.append('patient_id', patient_id);
       if (age) formData.append('age', age);
       if (gender) formData.append('gender', gender);
       if (name) formData.append('name', name);
       
-      // Node 18+ fetch FormData with File/Blob
-      const fileBuffer = fs.readFileSync(req.file.path);
-      const blob = new Blob([fileBuffer], { type: 'application/pdf' });
-      formData.append('file', blob, req.file.originalname);
+      const fileStream = fs.createReadStream(req.file.path);
+      formData.append('file', fileStream, { filename: req.file.originalname, contentType: 'application/pdf' });
 
-      // We extract API Key if sent by frontend, otherwise use the Edge Node Health AI at the Edge Admin Key
       const apiKey = req.headers['x-api-key'] || process.env.API_KEYS_ADMIN || 'xB3z9Bw2u8qkD5sT_1GvLw0aR6YhN4pOeZcF7mX';
       const token = req.headers.authorization ? req.headers.authorization.split(' ')[1] : 'clinician_token';
 
       const agentRes = await edgeFetch(`${MINI_BASE_URL}/api/v1/ehr/ingest`, {
         method: 'POST',
         headers: {
+          ...formData.getHeaders(),
           'X-API-Key': apiKey,
           'Authorization': `Bearer ${token}`
         },
@@ -756,14 +758,16 @@ app.post('/api/abg/upload', upload.single('file'), async (req, res) => {
 
     // Proxy PDF to Health AI at the Edge-Agent on Edge Node
     try {
-      const fileData = fs.readFileSync(req.file.path);
-      const blob = new Blob([fileData], { type: 'application/pdf' });
-      const formData = new FormData();
-      formData.append('file', blob, req.file.originalname);
+      const fileStream = fs.createReadStream(req.file.path);
+      const formData = new FormDataNode();
+      formData.append('file', fileStream, { filename: req.file.originalname, contentType: 'application/pdf' });
 
       const agentRes = await edgeFetch(`${MINI_BASE_URL}/api/v1/abg/upload`, {
         method: 'POST',
-        headers: { 'X-API-Key': process.env.API_KEYS_ADMIN || 'xB3z9Bw2u8qkD5sT_1GvLw0aR6YhN4pOeZcF7mX' },
+        headers: {
+          ...formData.getHeaders(),
+          'X-API-Key': process.env.API_KEYS_ADMIN || 'xB3z9Bw2u8qkD5sT_1GvLw0aR6YhN4pOeZcF7mX'
+        },
         body: formData,
         signal: AbortSignal.timeout(45000)
       });
@@ -852,7 +856,8 @@ app.post('/api/abg/analyze', async (req, res) => {
     abgHistoryDB.push(result);
     saveAbgHistory();
 
-    if (result.alert_level === 'Critical' || result.alert_level === 'High') {
+    const levelUpper = String(result.alert_level).toUpperCase();
+    if (levelUpper === 'CRITICAL' || levelUpper === 'HIGH') {
       const alertMsg = `ABG Alert (${result.alert_level}): ${result.primary_concern || result.summary}`;
       io.emit('alarm:escalation', {
         patientId: patientId,
@@ -1097,6 +1102,8 @@ async function askMedGemmaForScores(canonicalId, vitals) {
         timestamp: new Date().toISOString()
       });
       console.log(`[MedGemma NEWS2/qSOFA] Patient ${canonicalId}: ${alertLevel} — ${msg.slice(0, 80)}`);
+    } else {
+      io.emit('alarm:resolved', { patientId: canonicalId });
     }
   } catch (err) {
     // MedGemma unavailable — skip silently (do not fall back to rule-based)
