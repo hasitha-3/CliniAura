@@ -640,8 +640,8 @@ app.post('/api/ehr/upload', upload.single('file'), async (req, res) => {
       if (gender) formData.append('gender', gender);
       if (name) formData.append('name', name);
       
-      const fileStream = fs.createReadStream(req.file.path);
-      formData.append('file', fileStream, { filename: req.file.originalname, contentType: 'application/pdf' });
+      const fileBuffer = fs.readFileSync(req.file.path);
+      formData.append('file', fileBuffer, { filename: req.file.originalname, contentType: 'application/pdf' });
 
       const apiKey = req.headers['x-api-key'] || process.env.API_KEYS_ADMIN || 'xB3z9Bw2u8qkD5sT_1GvLw0aR6YhN4pOeZcF7mX';
       const token = req.headers.authorization ? req.headers.authorization.split(' ')[1] : 'clinician_token';
@@ -758,9 +758,9 @@ app.post('/api/abg/upload', upload.single('file'), async (req, res) => {
 
     // Proxy PDF to Health AI at the Edge-Agent on Edge Node
     try {
-      const fileStream = fs.createReadStream(req.file.path);
+      const fileBuffer = fs.readFileSync(req.file.path);
       const formData = new FormDataNode();
-      formData.append('file', fileStream, { filename: req.file.originalname, contentType: 'application/pdf' });
+      formData.append('file', fileBuffer, { filename: req.file.originalname, contentType: 'application/pdf' });
 
       const agentRes = await edgeFetch(`${MINI_BASE_URL}/api/v1/abg/upload`, {
         method: 'POST',
