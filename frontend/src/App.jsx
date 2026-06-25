@@ -1038,18 +1038,16 @@ const DoctorDashboard = () => {
       const incomingId = String(data.vitals.patientId);
       const ptId = String(currentSel._id || '');
       const ptUser = String(currentSel.username || '');
-      
-      const EDGE_ID_MAP = {
-        '428': ['patient3', 'testpatient3', '3'],
-        '1736': ['patient3', 'testpatient3', '3'],
-        '1049': ['patient3', 'testpatient3', '3'],
-        '1051': ['patient4', 'testpatient4', '4'],
-      };
 
-      let directMatch = incomingId === ptId || incomingId === ptUser;
-      let mappedMatch = (EDGE_ID_MAP[incomingId] || []).some(mapped => ptUser === mapped || ptId === mapped);
+      // Backend now sends canonical DB _id — simple match
+      // Keep rawPatientId fallback for older broadcasts
+      const rawId = String(data.vitals.rawPatientId || incomingId);
+      const LEGACY_EDGE_MAP = { '428': '3', '1736': '3', '1049': '3', '1051': '4', '1734': '4', '1050': '4' };
+      const resolvedId = LEGACY_EDGE_MAP[rawId] || incomingId;
+
+      const isMatch = resolvedId === ptId || incomingId === ptId || incomingId === ptUser;
       
-      if (directMatch || mappedMatch) {
+      if (isMatch) {
         setVitalsData(prev => [...prev, data.vitals].slice(-20));
         if (data.alert) setAlert(data.alert);
         if (data.vitals.assessment) {
@@ -1073,6 +1071,22 @@ const DoctorDashboard = () => {
             return [...prev, ...newData].slice(-500);
           });
         }
+      }
+
+      // Always update the ward store so CommandCentre sees vitals for all patients
+      updateVitals(resolvedId, data.vitals, null);
+    });
+
+    // NEWS2 / qSOFA / ABG / edge alerts for the doctor's individual patient view
+    newSocket.on('alarm:escalation', (data) => {
+      const currentSel = selectedPatientRef.current;
+      if (!currentSel) return;
+      const pid = String(data.patientId);
+      const LEGACY_MAP = { '428': '3', '1736': '3', '1049': '3', '1051': '4', '1734': '4', '1050': '4' };
+      const resolvedId = LEGACY_MAP[pid] || pid;
+      if (resolvedId === String(currentSel._id)) {
+        setAlert(data.message);
+        updateVitals(resolvedId, null, data.message);
       }
     });
 

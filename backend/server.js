@@ -1034,24 +1034,119 @@ io.on('connection', (socket) => {
   });
 });
 
+// --- NEWS2 / qSOFA Scoring Engine ---
+// Tracks last alert per patient to debounce repeated alerts (30s window)
+const SCORE_ALERT_DEBOUNCE = {}; // patientId -> { news2: lastAlertTs, qsofa: lastAlertTs }
+
+function calcNEWS2(v) {
+  let score = 0;
+  const rr  = Number(v.respirationRate || 0);
+  const spo2 = Number(v.spO2 || 0);
+  const sys = Number(v.bloodPressureSys || 0);
+  const hr  = Number(v.heartRate || 0);
+  const temp = Number(v.temperature || 0);
+
+  // Respiration rate
+  if (rr <= 8) score += 3;
+  else if (rr <= 11) score += 1;
+  else if (rr <= 20) score += 0;
+  else if (rr <= 24) score += 2;
+  else score += 3;
+
+  // SpO2 (Scale 1 — no supplemental O2)
+  if (spo2 <= 91) score += 3;
+  else if (spo2 <= 93) score += 2;
+  else if (spo2 <= 95) score += 1;
+
+  // Systolic BP
+  if (sys <= 90) score += 3;
+  else if (sys <= 100) score += 2;
+  else if (sys <= 110) score += 1;
+  else if (sys <= 219) score += 0;
+  else score += 3;
+
+  // Heart rate
+  if (hr <= 40) score += 3;
+  else if (hr <= 50) score += 1;
+  else if (hr <= 90) score += 0;
+  else if (hr <= 110) score += 1;
+  else if (hr <= 130) score += 2;
+  else score += 3;
+
+  // Temperature (°F → °C)
+  const tempC = temp > 50 ? (temp - 32) * 5 / 9 : temp;
+  if (tempC <= 35.0) score += 3;
+  else if (tempC <= 36.0) score += 1;
+  else if (tempC <= 38.0) score += 0;
+  else if (tempC <= 39.0) score += 1;
+  else score += 2;
+
+  return score;
+}
+
+function calcQSOFA(v) {
+  let score = 0;
+  if (Number(v.respirationRate || 0) >= 22) score++;
+  if (Number(v.bloodPressureSys || 999) <= 100) score++;
+  // Altered consciousness not tracked from wearable — skip
+  return score;
+}
+
+function fireScoreAlerts(vitals) {
+  const pid = vitals.patientId;
+  const now = Date.now();
+  if (!SCORE_ALERT_DEBOUNCE[pid]) SCORE_ALERT_DEBOUNCE[pid] = {};
+
+  const news2 = calcNEWS2(vitals);
+  const qsofa = calcQSOFA(vitals);
+
+  // NEWS2 alert thresholds
+  let news2Level = null;
+  if (news2 >= 7) news2Level = 'CRITICAL';
+  else if (news2 >= 5) news2Level = 'HIGH';
+  else if (news2 >= 3) news2Level = 'MEDIUM';
+
+  if (news2Level) {
+    const lastSent = SCORE_ALERT_DEBOUNCE[pid].news2 || 0;
+    if (now - lastSent > 30000) { // 30s debounce
+      SCORE_ALERT_DEBOUNCE[pid].news2 = now;
+      const msg = `NEWS2 Score ${news2} (${news2Level}): Immediate clinical review required`;
+      io.emit('alarm:escalation', { patientId: pid, message: msg, level: news2Level, score: { news2 }, timestamp: new Date().toISOString() });
+      console.log(`[NEWS2] Patient ${pid}: score=${news2} → ${news2Level}`);
+    }
+  }
+
+  // qSOFA alert
+  if (qsofa >= 2) {
+    const lastSent = SCORE_ALERT_DEBOUNCE[pid].qsofa || 0;
+    if (now - lastSent > 30000) {
+      SCORE_ALERT_DEBOUNCE[pid].qsofa = now;
+      const msg = `qSOFA Score ${qsofa}/3: Possible sepsis — urgent assessment needed`;
+      io.emit('alarm:escalation', { patientId: pid, message: msg, level: 'HIGH', score: { qsofa }, timestamp: new Date().toISOString() });
+      console.log(`[qSOFA] Patient ${pid}: score=${qsofa} → HIGH`);
+    }
+  }
+}
+
+// Map from raw edge patient_id → canonical DB _id for alert routing
+const EDGE_TO_DB_ID_MAP = { '428': '3', '1736': '3', '1049': '3', '1051': '4', '1734': '4', '1050': '4' };
+
 // --- Mac Mini Edge API Polling ---
-// Fetch Prorithm live vitals directly from the edge node and broadcast via websocket
 setInterval(async () => {
   try {
     const res = await edgeFetch(`${MINI_BASE_URL}/dashboard/live`);
     if (res.ok) {
       const liveData = await res.json();
       
-      // Deduplicate records to avoid dashboard glitching (take the latest record per patient)
+      // Deduplicate: keep only the latest record per patient_id
       const latestDataPerPatient = new Map();
       liveData.forEach(pData => {
         if (String(pData.patient_id) === '1' || String(pData.patient_id) === '2') return;
-        
-        const currentLatest = latestDataPerPatient.get(pData.patient_id);
-        if (!currentLatest) {
+        const existing = latestDataPerPatient.get(pData.patient_id);
+        if (!existing) {
           latestDataPerPatient.set(pData.patient_id, pData);
-        } else if (pData.snapshot_timestamp && currentLatest.snapshot_timestamp) {
-          if (new Date(pData.snapshot_timestamp).getTime() > new Date(currentLatest.snapshot_timestamp).getTime()) {
+        } else if (pData.snapshot_timestamp && existing.snapshot_timestamp) {
+          if (new Date(pData.snapshot_timestamp) > new Date(existing.snapshot_timestamp)) {
             latestDataPerPatient.set(pData.patient_id, pData);
           }
         } else {
@@ -1063,38 +1158,27 @@ setInterval(async () => {
         let ecgData = pData.ecg || [];
         if (ecgData.length === 0) {
            const hr = pData.heart_rate || 72;
-           // Generate 100 points, covering exactly the last 2000ms (50Hz sample rate)
            ecgData = Array.from({length: 100}, (_, i) => {
               const t = ((Date.now() - 2000 + (i * 20)) % (60000 / hr)) / (60000 / hr);
               let val = 0;
-              
-              // Realistic mathematical PQRST generation
-              if (t > 0.05 && t < 0.20) {
-                 // P wave
-                 val = 0.6 * Math.sin((t - 0.05) / 0.15 * Math.PI);
-              } else if (t >= 0.20 && t < 0.24) {
-                 // Q dip
-                 val = -1.5 * Math.sin((t - 0.20) / 0.04 * Math.PI);
-              } else if (t >= 0.24 && t < 0.28) {
-                 // R spike
-                 val = 14 * Math.sin((t - 0.24) / 0.04 * Math.PI);
-              } else if (t >= 0.28 && t < 0.32) {
-                 // S dip
-                 val = -2.5 * Math.sin((t - 0.28) / 0.04 * Math.PI);
-              } else if (t > 0.45 && t < 0.65) {
-                 // T wave
-                 val = 1.2 * Math.sin((t - 0.45) / 0.20 * Math.PI);
-              }
-              
-              // Add slight baseline wander and electrical noise
+              if (t > 0.05 && t < 0.20) val = 0.6 * Math.sin((t - 0.05) / 0.15 * Math.PI);
+              else if (t >= 0.20 && t < 0.24) val = -1.5 * Math.sin((t - 0.20) / 0.04 * Math.PI);
+              else if (t >= 0.24 && t < 0.28) val = 14 * Math.sin((t - 0.24) / 0.04 * Math.PI);
+              else if (t >= 0.28 && t < 0.32) val = -2.5 * Math.sin((t - 0.28) / 0.04 * Math.PI);
+              else if (t > 0.45 && t < 0.65) val = 1.2 * Math.sin((t - 0.45) / 0.20 * Math.PI);
               const baseline = Math.sin((Date.now() + i * 20) / 1000) * 0.2;
               const noise = (Math.random() * 0.15 - 0.075);
               return val + baseline + noise;
            });
         }
 
+        const rawId = String(pData.patient_id);
+        // Use canonical DB ID for broadcasts so the frontend can match correctly
+        const canonicalId = EDGE_TO_DB_ID_MAP[rawId] || rawId;
+
         const vitals = {
-          patientId: String(pData.patient_id),
+          patientId: canonicalId,         // DB _id ("3" / "4") — consistent with frontend EDGE_TO_DB_ID map
+          rawPatientId: rawId,            // original edge id, kept for debugging
           heartRate: pData.heart_rate,
           spO2: pData.spo2,
           bloodPressureSys: pData.systolic_bp,
@@ -1113,10 +1197,21 @@ setInterval(async () => {
         const map = Math.round((vitals.bloodPressureSys + (2 * vitals.bloodPressureDia)) / 3);
         io.emit('vitals_update', { vitals, calculatedMAP: map });
 
+        // NEWS2 + qSOFA scoring alerts
+        fireScoreAlerts(vitals);
+
+        // Relay alerts directly from edge node
         if (pData.alerts && pData.alerts.length > 0) {
-          const alertMsg = pData.alerts[0].reason;
-          // Simple relay of alerts from the edge node
-          // io.to('DOCTOR').to('ADMIN').to('NURSE').emit('alarm:new', { patientId: vitals.patientId, message: alertMsg, level: pData.alerts[0].severity || 'MEDIUM' });
+          pData.alerts.forEach(alert => {
+            const alertMsg = alert.reason || alert.message || 'Edge device alert';
+            const level = alert.severity === 'HIGH' ? 'CRITICAL' : (alert.severity || 'MEDIUM');
+            io.emit('alarm:escalation', {
+              patientId: canonicalId,
+              message: `[Edge] ${alertMsg}`,
+              level,
+              timestamp: new Date().toISOString()
+            });
+          });
         }
       });
     }

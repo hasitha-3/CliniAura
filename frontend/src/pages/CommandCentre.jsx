@@ -67,23 +67,21 @@ const CommandCentre = () => {
 
     socket.on('vitals_update', (data) => {
       if (data?.vitals) {
-        const dbId = EDGE_TO_DB_ID[String(data.vitals.patientId)];
-        if (dbId) {
-          updateVitals(dbId, data.vitals, null);
-        }
+        // Backend now sends canonical DB _id in patientId — match directly
+        const pid = String(data.vitals.patientId);
+        const dbId = EDGE_TO_DB_ID[pid] || pid; // fallback to raw edge id if not mapped
+        updateVitals(dbId, data.vitals, null);
       }
     });
 
-    // socket.on('alarm:new', (data) => {
-    //   const mappedUsernames = EDGE_ID_MAP[String(data.patientId)];
-    //   if (mappedUsernames && mappedUsernames.length > 0) {
-    //     mappedUsernames.forEach(mappedId => updateVitals(mappedId, null, data.message));
-    //   }
-    // });
-
-    // socket.on('alarm:escalation', (data) => {
-    //   updateVitals(data.patientId, null, `ESCALATION: ${data.message}`);
-    // });
+    // Receive NEWS2 / qSOFA / ABG / edge alerts → push to Escalation Desk
+    socket.on('alarm:escalation', (data) => {
+      if (data?.patientId && data?.message) {
+        const pid = String(data.patientId);
+        const dbId = EDGE_TO_DB_ID[pid] || pid;
+        updateVitals(dbId, null, data.message);
+      }
+    });
 
     return () => {
       socket.close();
