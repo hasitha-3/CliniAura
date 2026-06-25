@@ -1034,102 +1034,75 @@ io.on('connection', (socket) => {
   });
 });
 
-// --- NEWS2 / qSOFA Scoring Engine ---
-// Tracks last alert per patient to debounce repeated alerts (30s window)
-const SCORE_ALERT_DEBOUNCE = {}; // patientId -> { news2: lastAlertTs, qsofa: lastAlertTs }
-
-function calcNEWS2(v) {
-  let score = 0;
-  const rr  = Number(v.respirationRate || 0);
-  const spo2 = Number(v.spO2 || 0);
-  const sys = Number(v.bloodPressureSys || 0);
-  const hr  = Number(v.heartRate || 0);
-  const temp = Number(v.temperature || 0);
-
-  // Respiration rate
-  if (rr <= 8) score += 3;
-  else if (rr <= 11) score += 1;
-  else if (rr <= 20) score += 0;
-  else if (rr <= 24) score += 2;
-  else score += 3;
-
-  // SpO2 (Scale 1 — no supplemental O2)
-  if (spo2 <= 91) score += 3;
-  else if (spo2 <= 93) score += 2;
-  else if (spo2 <= 95) score += 1;
-
-  // Systolic BP
-  if (sys <= 90) score += 3;
-  else if (sys <= 100) score += 2;
-  else if (sys <= 110) score += 1;
-  else if (sys <= 219) score += 0;
-  else score += 3;
-
-  // Heart rate
-  if (hr <= 40) score += 3;
-  else if (hr <= 50) score += 1;
-  else if (hr <= 90) score += 0;
-  else if (hr <= 110) score += 1;
-  else if (hr <= 130) score += 2;
-  else score += 3;
-
-  // Temperature (°F → °C)
-  const tempC = temp > 50 ? (temp - 32) * 5 / 9 : temp;
-  if (tempC <= 35.0) score += 3;
-  else if (tempC <= 36.0) score += 1;
-  else if (tempC <= 38.0) score += 0;
-  else if (tempC <= 39.0) score += 1;
-  else score += 2;
-
-  return score;
-}
-
-function calcQSOFA(v) {
-  let score = 0;
-  if (Number(v.respirationRate || 0) >= 22) score++;
-  if (Number(v.bloodPressureSys || 999) <= 100) score++;
-  // Altered consciousness not tracked from wearable — skip
-  return score;
-}
-
-function fireScoreAlerts(vitals) {
-  const pid = vitals.patientId;
-  const now = Date.now();
-  if (!SCORE_ALERT_DEBOUNCE[pid]) SCORE_ALERT_DEBOUNCE[pid] = {};
-
-  const news2 = calcNEWS2(vitals);
-  const qsofa = calcQSOFA(vitals);
-
-  // NEWS2 alert thresholds
-  let news2Level = null;
-  if (news2 >= 7) news2Level = 'CRITICAL';
-  else if (news2 >= 5) news2Level = 'HIGH';
-  else if (news2 >= 3) news2Level = 'MEDIUM';
-
-  if (news2Level) {
-    const lastSent = SCORE_ALERT_DEBOUNCE[pid].news2 || 0;
-    if (now - lastSent > 30000) { // 30s debounce
-      SCORE_ALERT_DEBOUNCE[pid].news2 = now;
-      const msg = `NEWS2 Score ${news2} (${news2Level}): Immediate clinical review required`;
-      io.emit('alarm:escalation', { patientId: pid, message: msg, level: news2Level, score: { news2 }, timestamp: new Date().toISOString() });
-      console.log(`[NEWS2] Patient ${pid}: score=${news2} → ${news2Level}`);
-    }
-  }
-
-  // qSOFA alert
-  if (qsofa >= 2) {
-    const lastSent = SCORE_ALERT_DEBOUNCE[pid].qsofa || 0;
-    if (now - lastSent > 30000) {
-      SCORE_ALERT_DEBOUNCE[pid].qsofa = now;
-      const msg = `qSOFA Score ${qsofa}/3: Possible sepsis — urgent assessment needed`;
-      io.emit('alarm:escalation', { patientId: pid, message: msg, level: 'HIGH', score: { qsofa }, timestamp: new Date().toISOString() });
-      console.log(`[qSOFA] Patient ${pid}: score=${qsofa} → HIGH`);
-    }
-  }
-}
-
-// Map from raw edge patient_id → canonical DB _id for alert routing
+// Map from raw edge patient_id → canonical DB _id
 const EDGE_TO_DB_ID_MAP = { '428': '3', '1736': '3', '1049': '3', '1051': '4', '1734': '4', '1050': '4' };
+
+// Debounce tracker for MedGemma NEWS2/qSOFA calls (per canonical patient, every 30s)
+const MEDGEMMA_SCORE_DEBOUNCE = {}; // canonicalId -> lastCallTs
+
+// Ask MedGemma to calculate NEWS2 + qSOFA and fire alert if needed
+async function askMedGemmaForScores(canonicalId, vitals) {
+  const now = Date.now();
+  const last = MEDGEMMA_SCORE_DEBOUNCE[canonicalId] || 0;
+  if (now - last < 30000) return; // only call every 30s
+  MEDGEMMA_SCORE_DEBOUNCE[canonicalId] = now;
+
+  try {
+    const payload = {
+      patient_id: canonicalId,
+      heart_rate: vitals.heartRate,
+      spo2: vitals.spO2,
+      systolic_bp: vitals.bloodPressureSys,
+      diastolic_bp: vitals.bloodPressureDia,
+      temperature: vitals.temperature,
+      respiration_rate: vitals.respirationRate,
+      hrv: vitals.hrv,
+      // Tell MedGemma to calculate NEWS2 and qSOFA specifically
+      scoring_request: 'Calculate NEWS2 score and qSOFA score from these vitals. State the scores numerically and give clinical alert level (CRITICAL/HIGH/MEDIUM/LOW/NORMAL).'
+    };
+
+    const gemmaRes = await edgeFetch(`${MINI_BASE_URL}/api/v1/vitals/snapshot`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Key': process.env.API_KEYS_ADMIN || 'xB3z9Bw2u8qkD5sT_1GvLw0aR6YhN4pOeZcF7mX',
+        'Authorization': 'Bearer clinician_token'
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(25000)
+    });
+
+    if (!gemmaRes.ok) return;
+    const result = await gemmaRes.json();
+
+    const summary = result.reasoning_summary || result.assessment || '';
+    const alertLevel = result.alert_level || 'NORMAL';
+
+    if (['CRITICAL', 'HIGH', 'MEDIUM'].includes(alertLevel)) {
+      // Parse NEWS2 / qSOFA scores out of summary text for the message
+      const news2Match = summary.match(/news[\s-]?2\s*(?:score)?[:\s=]+(\d+)/i);
+      const qsofaMatch = summary.match(/qsofa\s*(?:score)?[:\s=]+(\d+)/i);
+      
+      let msg = '';
+      if (news2Match) msg += `NEWS2: ${news2Match[1]}`;
+      if (qsofaMatch) msg += `${msg ? ' | ' : ''}qSOFA: ${qsofaMatch[1]}`;
+      if (!msg) msg = `AI Clinical Score Alert (${alertLevel})`;
+      msg += ` — ${summary.slice(0, 120).replace(/\n/g, ' ')}`;
+
+      io.emit('alarm:escalation', {
+        patientId: canonicalId,
+        message: `[MedGemma] ${msg}`,
+        level: alertLevel,
+        score: { news2: news2Match ? parseInt(news2Match[1]) : null, qsofa: qsofaMatch ? parseInt(qsofaMatch[1]) : null },
+        timestamp: new Date().toISOString()
+      });
+      console.log(`[MedGemma NEWS2/qSOFA] Patient ${canonicalId}: ${alertLevel} — ${msg.slice(0, 80)}`);
+    }
+  } catch (err) {
+    // MedGemma unavailable — skip silently (do not fall back to rule-based)
+    console.warn(`[MedGemma NEWS2/qSOFA] Patient ${canonicalId}: unreachable — ${err.message}`);
+  }
+}
 
 // --- Mac Mini Edge API Polling ---
 setInterval(async () => {
@@ -1138,23 +1111,30 @@ setInterval(async () => {
     if (res.ok) {
       const liveData = await res.json();
       
-      // Deduplicate: keep only the latest record per patient_id
-      const latestDataPerPatient = new Map();
+      // === KEY FIX: Deduplicate by CANONICAL ID (not raw edge patient_id) ===
+      // Mahima (testpatient3) has 3 edge IDs: 428, 1049, 1736 — all map to DB _id "3"
+      // Without this fix, 3 separate broadcasts fire per poll → glitch/flicker
+      const latestDataPerCanonical = new Map();
       liveData.forEach(pData => {
-        if (String(pData.patient_id) === '1' || String(pData.patient_id) === '2') return;
-        const existing = latestDataPerPatient.get(pData.patient_id);
+        const rawId = String(pData.patient_id);
+        if (rawId === '1' || rawId === '2') return;
+        const canonicalId = EDGE_TO_DB_ID_MAP[rawId] || rawId;
+
+        const existing = latestDataPerCanonical.get(canonicalId);
         if (!existing) {
-          latestDataPerPatient.set(pData.patient_id, pData);
+          latestDataPerCanonical.set(canonicalId, { ...pData, _canonicalId: canonicalId, _rawId: rawId });
         } else if (pData.snapshot_timestamp && existing.snapshot_timestamp) {
           if (new Date(pData.snapshot_timestamp) > new Date(existing.snapshot_timestamp)) {
-            latestDataPerPatient.set(pData.patient_id, pData);
+            latestDataPerCanonical.set(canonicalId, { ...pData, _canonicalId: canonicalId, _rawId: rawId });
           }
-        } else {
-          latestDataPerPatient.set(pData.patient_id, pData);
         }
+        // If no timestamps, keep first seen (stable, no flicker)
       });
 
-      latestDataPerPatient.forEach(pData => {
+      latestDataPerCanonical.forEach(pData => {
+        const canonicalId = pData._canonicalId;
+        const rawId = pData._rawId;
+
         let ecgData = pData.ecg || [];
         if (ecgData.length === 0) {
            const hr = pData.heart_rate || 72;
@@ -1172,13 +1152,9 @@ setInterval(async () => {
            });
         }
 
-        const rawId = String(pData.patient_id);
-        // Use canonical DB ID for broadcasts so the frontend can match correctly
-        const canonicalId = EDGE_TO_DB_ID_MAP[rawId] || rawId;
-
         const vitals = {
-          patientId: canonicalId,         // DB _id ("3" / "4") — consistent with frontend EDGE_TO_DB_ID map
-          rawPatientId: rawId,            // original edge id, kept for debugging
+          patientId: canonicalId,
+          rawPatientId: rawId,
           heartRate: pData.heart_rate,
           spO2: pData.spo2,
           bloodPressureSys: pData.systolic_bp,
@@ -1197,10 +1173,10 @@ setInterval(async () => {
         const map = Math.round((vitals.bloodPressureSys + (2 * vitals.bloodPressureDia)) / 3);
         io.emit('vitals_update', { vitals, calculatedMAP: map });
 
-        // NEWS2 + qSOFA scoring alerts
-        fireScoreAlerts(vitals);
+        // MedGemma-driven NEWS2 + qSOFA (non-blocking, debounced 30s)
+        askMedGemmaForScores(canonicalId, vitals).catch(() => {});
 
-        // Relay alerts directly from edge node
+        // Relay alerts from edge node
         if (pData.alerts && pData.alerts.length > 0) {
           pData.alerts.forEach(alert => {
             const alertMsg = alert.reason || alert.message || 'Edge device alert';
