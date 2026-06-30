@@ -38,13 +38,26 @@ const fs = require('fs');
 
 // Ensure uploads directory exists
 const uploadDir = path.join(__dirname, 'uploads');
+const audioUploadDir = path.join(__dirname, 'uploads', 'audio');
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir);
 }
+if (!fs.existsSync(audioUploadDir)) {
+  fs.mkdirSync(audioUploadDir);
+}
 
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
-  filename: (req, file, cb) => cb(null, `${req.body.patient_id || 'unknown'}_${Date.now()}.pdf`)
+  destination: (req, file, cb) => {
+    if (file.mimetype.startsWith('audio/')) {
+      cb(null, audioUploadDir);
+    } else {
+      cb(null, uploadDir);
+    }
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname) || (file.mimetype.startsWith('audio/') ? '.webm' : '.pdf');
+    cb(null, `${req.body.patient_id || req.params.id || 'unknown'}_${Date.now()}${ext}`);
+  }
 });
 const upload = multer({ storage });
 
@@ -59,6 +72,7 @@ const io = socketIo(server, { cors: { origin: '*' } });
 
 app.use(cors());
 app.use(express.json());
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Protect API routes with Audit Logging
 app.use('/api', (req, res, next) => {
@@ -222,6 +236,95 @@ app.get('/api/patients', (req, res) => {
   }
   
   res.json(safePatients);
+});
+
+app.post('/api/patients/:id/audio', upload.single('audio'), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No audio file provided' });
+  }
+  const audioUploadDir = path.join(__dirname, 'uploads', 'audio');
+  const patientId = req.params.id;
+  
+  // Count existing recordings for default name
+  let count = 1;
+  try {
+    const files = fs.readdirSync(audioUploadDir);
+    count = files.filter(f => f.startsWith(`${patientId}_`) && !f.endsWith('.json')).length;
+  } catch(e) {}
+
+  const metadata = {
+    name: `Recording ${count}`,
+    note: '',
+    timestamp: Date.now()
+  };
+  fs.writeFileSync(path.join(audioUploadDir, `${req.file.filename}.json`), JSON.stringify(metadata));
+
+  res.json({ success: true, file: req.file.filename, metadata });
+});
+
+app.get('/api/patients/:id/audio', (req, res) => {
+  const patientId = req.params.id;
+  const audioUploadDir = path.join(__dirname, 'uploads', 'audio');
+  fs.readdir(audioUploadDir, (err, files) => {
+    if (err) return res.status(500).json({ error: 'Could not read audio directory' });
+    const audioFiles = files.filter(f => f.startsWith(`${patientId}_`) && !f.endsWith('.json'));
+    
+    const patientFiles = audioFiles.map(f => {
+      const originalTimestamp = parseInt(f.split('_')[1].split('.')[0]);
+      let metadata = { name: 'Recording', note: '', timestamp: originalTimestamp };
+      const metaPath = path.join(audioUploadDir, `${f}.json`);
+      if (fs.existsSync(metaPath)) {
+        try { 
+          const parsed = JSON.parse(fs.readFileSync(metaPath, 'utf8')); 
+          metadata = { ...metadata, ...parsed };
+        } catch(e) {}
+      }
+      return {
+        filename: f,
+        url: `/uploads/audio/${f}`,
+        ...metadata
+      };
+    }).sort((a, b) => b.timestamp - a.timestamp); // Sort newest first
+    res.json(patientFiles);
+  });
+});
+
+app.put('/api/patients/:id/audio/:filename', (req, res) => {
+  const { id, filename } = req.params;
+  const audioUploadDir = path.join(__dirname, 'uploads', 'audio');
+  if (!filename.startsWith(`${id}_`)) return res.status(403).json({ error: 'Unauthorized update' });
+  const metaPath = path.join(audioUploadDir, `${filename}.json`);
+  
+  const originalTimestamp = parseInt(filename.split('_')[1].split('.')[0]);
+  let metadata = { name: 'Recording', note: '', timestamp: originalTimestamp || Date.now() };
+  
+  if (fs.existsSync(metaPath)) {
+    try { 
+      const parsed = JSON.parse(fs.readFileSync(metaPath, 'utf8')); 
+      metadata = { ...metadata, ...parsed };
+    } catch(e) {}
+  }
+  
+  if (req.body.name !== undefined) metadata.name = req.body.name;
+  if (req.body.note !== undefined) metadata.note = req.body.note;
+  
+  fs.writeFileSync(metaPath, JSON.stringify(metadata));
+  res.json({ success: true, metadata });
+});
+
+app.delete('/api/patients/:id/audio/:filename', (req, res) => {
+  const { id, filename } = req.params;
+  const audioUploadDir = path.join(__dirname, 'uploads', 'audio');
+  if (!filename.startsWith(`${id}_`)) return res.status(403).json({ error: 'Unauthorized deletion' });
+  const filepath = path.join(audioUploadDir, filename);
+  const metaPath = path.join(audioUploadDir, `${filename}.json`);
+  if (fs.existsSync(filepath)) {
+    fs.unlinkSync(filepath);
+    if (fs.existsSync(metaPath)) fs.unlinkSync(metaPath);
+    res.json({ success: true });
+  } else {
+    res.status(404).json({ error: 'File not found' });
+  }
 });
 
 app.put('/api/users/:id', (req, res) => {

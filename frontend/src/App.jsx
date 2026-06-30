@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, createContext, useContext } from 'r
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import io from 'socket.io-client';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Activity, Heart, Wind, Droplet, AlertTriangle, LogOut, Shield, ShieldAlert, Stethoscope, User as UserIcon, ChevronDown, ChevronRight, CheckCircle, Info, Settings, FileText, Thermometer, Footprints, Accessibility, Bell } from 'lucide-react';
+import { Activity, Heart, Wind, Droplet, AlertTriangle, LogOut, Shield, ShieldAlert, Stethoscope, User as UserIcon, ChevronDown, ChevronRight, CheckCircle, Info, Settings, FileText, Thermometer, Footprints, Accessibility, Bell, Mic, Square, PlayCircle, PauseCircle, Trash2 } from 'lucide-react';
 import { generateDummyPatients, generateDummyVitals, generateCliniAuraAlert } from './utils/dummyDataSimulator';
 import './index.css';
 
@@ -1410,6 +1410,259 @@ const DoctorDashboard = () => {
   );
 };
 
+const CustomAudioPlayer = ({ src, filename, name, note, timestamp, onDelete, onUpdate }) => {
+  const audioRef = useRef(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [duration, setDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editName, setEditName] = useState(name);
+  const [editNote, setEditNote] = useState(note);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    const setAudioData = () => {
+      if (audio.duration === Infinity) {
+        // Fix for Chrome WebM Infinity duration bug
+        audio.currentTime = 1e101;
+        audio.ontimeupdate = () => {
+          audio.ontimeupdate = () => {};
+          audio.currentTime = 0;
+          setDuration(audio.duration);
+        };
+      } else {
+        setDuration(audio.duration);
+      }
+    };
+    const setAudioTime = () => setCurrentTime(audio.currentTime);
+    const setAudioEnd = () => { setIsPlaying(false); setCurrentTime(duration); };
+
+    audio.addEventListener('loadedmetadata', setAudioData);
+    audio.addEventListener('timeupdate', setAudioTime);
+    audio.addEventListener('ended', setAudioEnd);
+    return () => {
+      audio.removeEventListener('loadedmetadata', setAudioData);
+      audio.removeEventListener('timeupdate', setAudioTime);
+      audio.removeEventListener('ended', setAudioEnd);
+    };
+  }, [duration]);
+
+  const togglePlay = () => {
+    if (isPlaying) {
+      audioRef.current.pause();
+    } else {
+      if (currentTime >= duration) audioRef.current.currentTime = 0;
+      audioRef.current.play();
+    }
+    setIsPlaying(!isPlaying);
+  };
+
+  const handleSeek = (e) => {
+    const time = Number(e.target.value);
+    audioRef.current.currentTime = time;
+    setCurrentTime(time);
+  };
+
+  const handleSave = () => {
+    setIsEditing(false);
+    if (onUpdate) onUpdate(filename, editName, editNote);
+  };
+
+  const formatTime = (time) => {
+    if (isNaN(time) || !isFinite(time)) return '0:00';
+    const m = Math.floor(time / 60);
+    const s = Math.floor(time % 60);
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
+  };
+
+  return (
+    <div style={{ background: 'rgba(255,255,255,0.05)', padding: '15px', borderRadius: '8px', marginBottom: '15px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
+        <div style={{ flex: 1 }}>
+          {isEditing ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <input type="text" value={editName} onChange={e => setEditName(e.target.value)} style={{ padding: '6px 10px', background: 'var(--surface)', color: 'white', border: '1px solid var(--border)', borderRadius: '4px' }} placeholder="Recording Name" />
+              <textarea value={editNote} onChange={e => setEditNote(e.target.value)} style={{ padding: '6px 10px', background: 'var(--surface)', color: 'white', border: '1px solid var(--border)', borderRadius: '4px', minHeight: '60px', fontFamily: 'inherit' }} placeholder="Add a note..."></textarea>
+              <button onClick={handleSave} className="btn btn-primary" style={{ alignSelf: 'flex-start', padding: '6px 16px', fontSize: '0.85rem' }}>Save</button>
+            </div>
+          ) : (
+            <>
+              <div style={{ fontWeight: 'bold', color: 'var(--teal)', fontSize: '1.1rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '8px' }} onClick={() => setIsEditing(true)} title="Click to edit">
+                {name || 'Recording'}
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+              </div>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                {new Date(timestamp).toLocaleString()}
+              </div>
+              {note && <div style={{ fontSize: '0.9rem', color: 'var(--text-dim)', marginBottom: '10px', fontStyle: 'italic', paddingLeft: '8px', borderLeft: '2px solid var(--border)' }}>{note}</div>}
+            </>
+          )}
+        </div>
+        <button onClick={() => onDelete(filename)} className="btn" style={{ background: 'transparent', color: '#ef4444', border: 'none', padding: '5px', cursor: 'pointer', alignSelf: 'flex-start' }} title="Delete">
+          <Trash2 size={20} />
+        </button>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <audio ref={audioRef} src={src} preload="metadata" />
+        <button onClick={togglePlay} className="btn" style={{ background: 'transparent', color: 'var(--teal)', border: 'none', padding: '0', cursor: 'pointer' }}>
+          {isPlaying ? <PauseCircle size={28} /> : <PlayCircle size={28} />}
+        </button>
+        <input 
+          type="range" 
+          min={0} 
+          max={duration || 0}
+          step="0.01"
+          value={currentTime} 
+          onChange={handleSeek} 
+          style={{ flex: 1, accentColor: 'var(--teal)', cursor: 'pointer', height: '6px' }} 
+        />
+        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', minWidth: '75px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{formatTime(currentTime)} / {formatTime(duration)}</span>
+      </div>
+    </div>
+  );
+};
+
+const VoiceRecorder = ({ patientId }) => {
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordings, setRecordings] = useState([]);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+
+  const fetchRecordings = async () => {
+    try {
+      const API_URL = import.meta.env.VITE_BACKEND_URL || `${window.location.protocol}//${window.location.hostname}:5000`;
+      const res = await fetch(`${API_URL}/api/patients/${patientId}/audio`);
+      if (res.ok) {
+        const data = await res.json();
+        setRecordings(data);
+      }
+    } catch (e) {
+      console.error("Failed to fetch recordings", e);
+    }
+  };
+
+  useEffect(() => {
+    if (patientId) fetchRecordings();
+  }, [patientId]);
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) audioChunksRef.current.push(event.data);
+      };
+
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const formData = new FormData();
+        formData.append('audio', audioBlob, 'recording.webm');
+        
+        try {
+          const API_URL = import.meta.env.VITE_BACKEND_URL || `${window.location.protocol}//${window.location.hostname}:5000`;
+          const res = await fetch(`${API_URL}/api/patients/${patientId}/audio`, {
+            method: 'POST',
+            body: formData
+          });
+          if (res.ok) {
+            fetchRecordings();
+          }
+        } catch (e) {
+          console.error("Failed to upload recording", e);
+        }
+        
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+    } catch (err) {
+      console.error("Error accessing microphone:", err);
+      alert("Microphone access denied or unavailable.");
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+    }
+  };
+
+  const handleDelete = async (filename) => {
+    if (!window.confirm("Are you sure you want to delete this recording?")) return;
+    try {
+      const API_URL = import.meta.env.VITE_BACKEND_URL || `${window.location.protocol}//${window.location.hostname}:5000`;
+      const res = await fetch(`${API_URL}/api/patients/${patientId}/audio/${filename}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        fetchRecordings();
+      }
+    } catch (e) {
+      console.error("Failed to delete recording", e);
+    }
+  };
+
+  const handleUpdate = async (filename, newName, newNote) => {
+    try {
+      const API_URL = import.meta.env.VITE_BACKEND_URL || `${window.location.protocol}//${window.location.hostname}:5000`;
+      const res = await fetch(`${API_URL}/api/patients/${patientId}/audio/${filename}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName, note: newNote })
+      });
+      if (res.ok) fetchRecordings();
+    } catch (e) {
+      console.error("Failed to update recording", e);
+    }
+  };
+
+  return (
+    <div className="glass-panel" style={{ padding: '20px', marginTop: '20px' }}>
+      <h3 style={{ marginTop: 0, color: 'var(--teal)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <Mic size={20} /> Voice Notes
+      </h3>
+      
+      <div style={{ marginBottom: '20px' }}>
+        {!isRecording ? (
+          <button onClick={startRecording} className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Mic size={18} /> Start Recording
+          </button>
+        ) : (
+          <button onClick={stopRecording} className="btn" style={{ background: '#ef4444', color: 'white', border: 'none', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+            <Square size={18} fill="white" /> Stop Recording <span className="live-pulse" style={{ background: 'white' }}></span>
+          </button>
+        )}
+      </div>
+
+      <div>
+        {recordings.length === 0 ? (
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>No recordings found.</p>
+        ) : (
+          recordings.map((rec, i) => (
+            <CustomAudioPlayer 
+              key={rec.filename} 
+              src={`${import.meta.env.VITE_BACKEND_URL || `${window.location.protocol}//${window.location.hostname}:5000`}${rec.url}`} 
+              filename={rec.filename}
+              name={rec.name}
+              note={rec.note}
+              timestamp={rec.timestamp}
+              onDelete={handleDelete} 
+              onUpdate={handleUpdate}
+            />
+          ))
+        )}
+      </div>
+    </div>
+  );
+};
+
 const PatientDashboard = () => {
   const [profile, setProfile] = useState(null);
   const [latestVitals, setLatestVitals] = useState(null);
@@ -1681,6 +1934,8 @@ const PatientDashboard = () => {
       ) : (
         <div style={{ textAlign: 'center', marginTop: '50px', color: 'var(--text-muted)' }}>Loading dashboard data...</div>
       )}
+
+      {profile && <VoiceRecorder patientId={profile._id} />}
     </div>
   );
 };
